@@ -1,0 +1,5 @@
+{
+  "name": "SocialStream Hub",
+  "description": "A high-performance social media aggregator that consolidates recommendation feeds from Weibo, Xiaohongshu, and Bilibili into a unified dashboard. Features include account management, real-time trend analysis using Gemini AI, and one-click access to original content.",
+  "requestFramePermissions": []
+}
