@@ -1,5 +1,5 @@
-import { accountOps } from './database';
-import { syncPlatformContent } from './syncService';
+import { accountOps } from '../database';
+import { syncPlatformContent } from '../globalFocusService';
 
 type Platform = 'Weibo' | 'Bilibili' | 'Xiaohongshu';
 
@@ -132,11 +132,11 @@ export function getSyncStatus(): Map<Platform, boolean> {
     status.set('Weibo', false);
     status.set('Bilibili', false);
     status.set('Xiaohongshu', false);
-    
+
     for (const platform of runningTasks.values()) {
         status.set(platform, true);
     }
-    
+
     return status;
 }
 

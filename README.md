@@ -193,7 +193,7 @@ aggregation/
 │       ├── database.ts         # 数据库服务
 │       ├── loginService.ts     # 登录服务
 │       ├── schedulerService.ts # 定时任务服务
-│       ├── syncService.ts      # 同步服务
+│       ├── globalFocusService.ts # 全网聚焦服务 (同步服务)
 │       └── scrapers/           # 内容抓取器
 │           ├── base.ts            # 基础抓取器
 │           ├── weibo.ts           # 微博抓取器

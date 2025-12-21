@@ -97,19 +97,37 @@ export const accountsApi = {
         fetchApi('/accounts/sync/status'),
 };
 
-// Items API
-export const itemsApi = {
+// Global Focus API
+export const globalFocusApi = {
     getAll: (page = 1, limit = 30) =>
-        fetchApi(`/items?page=${page}&limit=${limit}`),
+        fetchApi(`/global-focus?page=${page}&limit=${limit}`),
 
     getByPlatform: (platform: string, page = 1, limit = 30) =>
-        fetchApi(`/items/${platform}?page=${page}&limit=${limit}`),
+        fetchApi(`/global-focus/${platform}?page=${page}&limit=${limit}`),
 
     getById: (id: number) =>
-        fetchApi(`/items/detail/${id}`),
+        fetchApi(`/global-focus/detail/${id}`),
 
     getCounts: () =>
-        fetchApi(`/items/stats/counts`),
+        fetchApi(`/global-focus/stats/counts`),
+};
+
+// Hot Trends API
+export const hotTrendsApi = {
+    getTrends: (platform: string, category?: string) =>
+        fetchApi(`/hot-trends?platform=${platform}${category ? `&category=${category}` : ''}`),
+
+    getMeta: () =>
+        fetchApi('/hot-trends/meta'),
+
+    getStatus: () =>
+        fetchApi('/hot-trends/status'),
+
+    syncAll: () =>
+        fetchApi('/hot-trends/sync', { method: 'POST' }),
+
+    syncPlatform: (platform: string) =>
+        fetchApi(`/hot-trends/sync/${platform}`, { method: 'POST' }),
 };
 
 // Health check

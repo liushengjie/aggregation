@@ -64,6 +64,25 @@ function initSchema() {
       UNIQUE(account_id, external_id)
     )
   `);
+
+  // Hot trends table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS hot_trends (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      platform TEXT NOT NULL,
+      category_id TEXT NOT NULL,
+      rank INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      hotness TEXT,
+      url TEXT,
+      extra_data TEXT,
+      fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Create indexes for hot_trends
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_hot_trends_platform_category ON hot_trends(platform, category_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_hot_trends_fetched_at ON hot_trends(fetched_at)`);
 }
 
 // Initialize schema before preparing statements
@@ -243,5 +262,44 @@ export const itemOps = {
 export function initDatabase() {
   console.log('Database initialized successfully');
 }
+
+// Hot trend operations
+export const hotTrendOps = {
+  // Insert a hot trend item
+  insert: db.prepare(`
+    INSERT INTO hot_trends (platform, category_id, rank, title, hotness, url, extra_data)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `),
+
+  // Get latest hot trends for a platform and category
+  findLatest: db.prepare(`
+    SELECT * FROM hot_trends
+    WHERE platform = ? AND category_id = ?
+    AND fetched_at = (
+      SELECT MAX(fetched_at) FROM hot_trends WHERE platform = ? AND category_id = ?
+    )
+    ORDER BY rank ASC
+  `),
+
+  // Get latest fetch time for a platform and category
+  getLatestFetchTime: db.prepare(`
+    SELECT MAX(fetched_at) as latest FROM hot_trends WHERE platform = ? AND category_id = ?
+  `),
+
+  // Delete old hot trends (older than 24 hours)
+  deleteOld: db.prepare(`
+    DELETE FROM hot_trends WHERE fetched_at < datetime('now', '-24 hours')
+  `),
+
+  // Delete all for a platform and category (before inserting new batch)
+  deleteByPlatformCategory: db.prepare(`
+    DELETE FROM hot_trends WHERE platform = ? AND category_id = ?
+  `),
+
+  // Count by platform
+  countByPlatform: db.prepare(`
+    SELECT platform, COUNT(*) as count FROM hot_trends GROUP BY platform
+  `),
+};
 
 export default db;

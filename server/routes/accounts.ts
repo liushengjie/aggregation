@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { requireAuth } from '../services/auth';
 import { accountOps } from '../services/database';
 import { startLoginSession, getSessionScreenshot, submitCredentials, submitCaptcha } from '../services/loginService';
-import { getSyncStatusForUser, setSyncRunning, clearSyncRunning } from '../services/schedulerService';
+import { getSyncStatusForUser, setSyncRunning, clearSyncRunning } from '../services/schedulers/globalFocusSchedulerService';
 
 const router = Router();
 
@@ -298,7 +298,7 @@ router.post('/:platform/sync', requireAuth, async (req, res) => {
         }
 
         // Import sync service
-        const { syncPlatformContent } = await import('../services/syncService');
+        const { syncPlatformContent } = await import('../services/globalFocusService');
 
         // Mark sync as running
         setSyncRunning(account.id, platform as any);
