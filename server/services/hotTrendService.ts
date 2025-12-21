@@ -52,8 +52,8 @@ class HotTrendService {
             const categories = PLATFORM_CATEGORIES[platform] || [];
             const targetCategory = categoryId || categories[0]?.id || 'popular';
 
-            // Query database for latest hot trends (no limit - returns all items)
-            const items = hotTrendOps.findLatest.all(platform, targetCategory, platform, targetCategory) as any[];
+            // Query database for all hot trends (no batch filtering - returns all items for the platform/category)
+            const items = hotTrendOps.findLatest.all(platform, targetCategory) as any[];
 
             // Log query results for debugging
             if (items && items.length > 0) {
@@ -107,7 +107,7 @@ class HotTrendService {
             const categories = PLATFORM_CATEGORIES[platform] || [];
             if (categories.length === 0) return false;
 
-            const items = hotTrendOps.findLatest.all(platform, categories[0].id, platform, categories[0].id) as any[];
+            const items = hotTrendOps.findLatest.all(platform, categories[0].id) as any[];
             return items && items.length > 0;
         } catch (error) {
             return false;

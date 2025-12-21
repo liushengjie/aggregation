@@ -376,13 +376,10 @@ export const hotTrendOps = {
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `),
 
-  // Get latest hot trends for a platform and category (no limit to return all items)
+  // Get all hot trends for a platform and category (no batch filtering, returns all items)
   findLatest: db.prepare(`
     SELECT * FROM hot_trends
     WHERE platform = ? AND category_id = ?
-    AND fetched_at = (
-      SELECT MAX(fetched_at) FROM hot_trends WHERE platform = ? AND category_id = ?
-    )
     ORDER BY rank ASC
   `),
 
