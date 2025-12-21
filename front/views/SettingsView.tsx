@@ -78,7 +78,7 @@ const SettingsView: React.FC = () => {
 
   return (
     <div className="w-full h-full flex flex-col animate-in fade-in duration-500 pb-4">
-      <header className="ipad-glass rounded-none lg:rounded-md mb-0 lg:mb-4 px-3 lg:px-4 py-2 lg:py-3 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 lg:gap-4 shrink-0 z-40 border-b lg:border border-white/60">
+      <header className="ipad-glass rounded-none lg:rounded-md mb-0 lg:mb-4 px-3 lg:px-4 py-2 lg:py-3 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 lg:gap-4 shrink-0 z-40 border-b lg:border border-white/60 glass-shimmer">
         {/* Mobile: Top row */}
         <div className="flex items-center justify-between w-full lg:hidden">
           <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -123,7 +123,7 @@ const SettingsView: React.FC = () => {
 
         {/* Desktop: Right */}
         <div className="hidden lg:flex items-center gap-3 flex-shrink-0">
-          <div className="flex items-center gap-1 px-3 py-1.5 bg-white/50 rounded-full border border-white/60 text-[10px] font-black text-slate-500 uppercase tracking-wider shadow-sm">
+          <div className="flex items-center gap-1 px-3 py-1.5 bg-white/50 rounded-full border border-white/60 text-[10px] font-black text-slate-500 uppercase tracking-wider shadow-sm pulse-glow">
             <div className="w-1.5 h-1.5 bg-slate-400 rounded-full"></div>
             System Secure
           </div>
@@ -134,7 +134,7 @@ const SettingsView: React.FC = () => {
         <div className="max-w-5xl mx-auto">
           <div className="flex flex-col md:flex-row gap-4">
             {/* Sidebar Tabs */}
-            <div className="w-full md:w-60 space-y-1.5">
+            <div className="w-full md:w-60 space-y-1.5 stagger-item">
               <div className="hidden md:block mb-4 px-2">
                 <h2 className="text-xl font-black text-slate-800 tracking-tight">配置选项</h2>
               </div>
@@ -169,7 +169,7 @@ const SettingsView: React.FC = () => {
             </div>
 
             {/* Main Content Area */}
-            <div className="flex-1 ipad-glass rounded-md p-6 min-h-[500px] shadow-xl shadow-slate-200/50 border border-white/60">
+            <div className="flex-1 ipad-glass rounded-md p-6 min-h-[500px] shadow-xl shadow-slate-200/50 border border-white/60 stagger-item" style={{ animationDelay: '100ms' }}>
               <div className="mb-6 pb-4 border-b border-slate-200/50">
                 <h3 className="text-xl font-black text-slate-800 tracking-tight">
                   {tabs.find(t => t.id === activeTab)?.name}
@@ -182,7 +182,7 @@ const SettingsView: React.FC = () => {
           </div>
 
           {/* Footer Support - Glass Cards */}
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 stagger-item" style={{ animationDelay: '200ms' }}>
             {[
               { icon: <Key />, title: '隐私安全', desc: '端到端加密保护所有信息。' },
               { icon: <Smartphone />, title: '多端同步', desc: '随时随地同步平台配置。' },

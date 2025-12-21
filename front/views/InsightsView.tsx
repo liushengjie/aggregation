@@ -4,7 +4,7 @@ import { Sparkles, BrainCircuit, Zap, TrendingUp, BarChart3, Globe, Cpu, ArrowUp
 const InsightsView: React.FC = () => {
   return (
     <div className="w-full h-full flex flex-col animate-in fade-in duration-500 pb-4">
-      <header className="ipad-glass rounded-none lg:rounded-md mb-0 lg:mb-4 px-3 lg:px-4 py-2 lg:py-3 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 lg:gap-4 shrink-0 z-40 border-b lg:border border-white/60">
+      <header className="ipad-glass rounded-none lg:rounded-md mb-0 lg:mb-4 px-3 lg:px-4 py-2 lg:py-3 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 lg:gap-4 shrink-0 z-40 border-b lg:border border-white/60 glass-shimmer">
         {/* Mobile: Top row */}
         <div className="flex items-center justify-between w-full lg:hidden">
           <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -49,7 +49,7 @@ const InsightsView: React.FC = () => {
 
         {/* Desktop: Right */}
         <div className="hidden lg:flex items-center gap-3 flex-shrink-0">
-          <div className="flex items-center gap-1 px-3 py-1.5 bg-white/50 rounded-full border border-white/60 text-[10px] font-black text-slate-500 uppercase tracking-wider shadow-sm">
+          <div className="flex items-center gap-1 px-3 py-1.5 bg-white/50 rounded-full border border-white/60 text-[10px] font-black text-slate-500 uppercase tracking-wider shadow-sm pulse-glow">
             <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse"></div>
             AI Engine Online
           </div>
@@ -60,7 +60,7 @@ const InsightsView: React.FC = () => {
         <div className="max-w-7xl mx-auto space-y-4">
           {/* Hero Section - Micro-Glass */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="lg:col-span-2 bg-slate-900 rounded-md p-6 text-white relative overflow-hidden shadow-xl shadow-indigo-900/20 group">
+            <div className="lg:col-span-2 bg-slate-900 rounded-md p-6 text-white relative overflow-hidden shadow-xl shadow-indigo-900/20 group stagger-item">
               <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-600/30 rounded-full blur-[100px] -mr-20 -mt-20 animate-pulse"></div>
               <div className="relative z-10">
                 <div className="flex items-center gap-2 mb-6">
@@ -88,7 +88,7 @@ const InsightsView: React.FC = () => {
               </div>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-4 stagger-item" style={{ animationDelay: '100ms' }}>
               <div className="ipad-glass p-5 rounded-md h-[calc(50%-8px)] flex flex-col justify-center shadow-sm hover:shadow-md transition-shadow border border-white/60">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Data Sources</span>
@@ -115,7 +115,7 @@ const InsightsView: React.FC = () => {
           </div>
 
           {/* Metrics Grid - Glass Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 stagger-item" style={{ animationDelay: '200ms' }}>
             {[
               { title: '主流情绪', icon: <BrainCircuit />, color: 'blue', desc: '今日全网内容偏向“积极生活”与“效率提升”。' },
               { title: '爆红话题', icon: <Zap />, color: 'amber', desc: '#2024AI应用元年# 在各平台均有极高流量。' },
@@ -138,7 +138,7 @@ const InsightsView: React.FC = () => {
           </div>
 
           {/* Core Summary - Glass Panel */}
-          <div className="ipad-glass rounded-md p-6 shadow-sm relative overflow-hidden border border-white/60">
+          <div className="ipad-glass rounded-md p-6 shadow-sm relative overflow-hidden border border-white/60 stagger-item" style={{ animationDelay: '300ms' }}>
             <div className="flex items-center gap-3 mb-4 pb-4 border-b border-slate-200/50">
               <div className="w-8 h-8 bg-slate-800 rounded-md flex items-center justify-center text-white shadow-lg shadow-slate-300/50">
                 <BarChart3 size={16} />
