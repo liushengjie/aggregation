@@ -52,10 +52,12 @@ class HotTrendService {
             const categories = PLATFORM_CATEGORIES[platform] || [];
             const targetCategory = categoryId || categories[0]?.id || 'popular';
 
-            // Query database for latest hot trends
+            // Query database for latest hot trends (no limit - returns all items)
             const items = hotTrendOps.findLatest.all(platform, targetCategory, platform, targetCategory) as any[];
 
+            // Log query results for debugging
             if (items && items.length > 0) {
+                console.log(`[HotTrendService] Found ${items.length} items for ${platform}/${targetCategory}`);
                 return items.map(item => ({
                     rank: item.rank,
                     title: item.title,
@@ -67,6 +69,7 @@ class HotTrendService {
             }
 
             // Return empty array if no data in database
+            console.log(`[HotTrendService] No items found for ${platform}/${targetCategory}`);
             return [];
         } catch (error) {
             console.error(`[HotTrendService] Error getting hot trends for ${platform}/${categoryId}:`, error);

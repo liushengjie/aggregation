@@ -7,7 +7,7 @@ import { getSyncStatusForUser, setSyncRunning, clearSyncRunning } from '../servi
 
 const router = Router();
 
-type Platform = 'Weibo' | 'Bilibili' | 'Xiaohongshu';
+type Platform = 'Weibo' | 'Bilibili' | 'Xiaohongshu' | 'Douyin';
 
 // Get all platform accounts for current user
 router.get('/', requireAuth, (req, res) => {
@@ -66,7 +66,7 @@ router.get('/:platform/login/status/:sessionId', requireAuth, async (req, res) =
     try {
         const { platform, sessionId } = req.params;
 
-        if (!['Weibo', 'Bilibili', 'Xiaohongshu'].includes(platform)) {
+        if (!['Weibo', 'Bilibili', 'Xiaohongshu', 'Douyin'].includes(platform)) {
             return res.status(400).json({ error: 'Invalid platform' });
         }
 
@@ -150,7 +150,7 @@ router.get('/:platform/login/screenshot/:sessionId', requireAuth, async (req, re
     try {
         const { platform, sessionId } = req.params;
 
-        if (!['Weibo', 'Bilibili', 'Xiaohongshu'].includes(platform)) {
+        if (!['Weibo', 'Bilibili', 'Xiaohongshu', 'Douyin'].includes(platform)) {
             return res.status(400).json({ error: 'Invalid platform' });
         }
 
@@ -173,7 +173,7 @@ router.post('/:platform/login/credentials/:sessionId', requireAuth, async (req, 
         const { platform, sessionId } = req.params;
         const { username, password } = req.body;
 
-        if (!['Weibo', 'Bilibili', 'Xiaohongshu'].includes(platform)) {
+        if (!['Weibo', 'Bilibili', 'Xiaohongshu', 'Douyin'].includes(platform)) {
             return res.status(400).json({ error: 'Invalid platform' });
         }
 
@@ -194,21 +194,21 @@ router.post('/:platform/login/credentials/:sessionId', requireAuth, async (req, 
     }
 });
 
-// Submit captcha code (for Xiaohongshu)
+// Submit captcha code (for Xiaohongshu and Douyin)
 router.post('/:platform/login/captcha/:sessionId', requireAuth, async (req, res) => {
     try {
         const { platform, sessionId } = req.params;
-        const { captcha } = req.body;
+        const { captchaCode } = req.body;
 
         if (!['Xiaohongshu'].includes(platform)) {
             return res.status(400).json({ error: 'Captcha only supported for Xiaohongshu' });
         }
-
-        if (!captcha) {
+        
+        if (!captchaCode) {
             return res.status(400).json({ error: 'Captcha code is required' });
         }
 
-        const result = await submitCaptcha(sessionId, captcha);
+        const result = await submitCaptcha(sessionId, captchaCode);
 
         if (!result.success) {
             return res.status(400).json({ error: result.error });
@@ -249,10 +249,9 @@ router.delete('/:platform', requireAuth, (req, res) => {
     try {
         const { platform } = req.params;
 
-        if (!['Weibo', 'Bilibili', 'Xiaohongshu'].includes(platform)) {
-            return res.status(400).json({ error: 'Invalid platform' });
-        }
-
+        // Allow disconnect for all platforms (including Douyin if previously connected)
+        // But only allow new connections for Weibo, Bilibili, Xiaohongshu
+        
         // Clear cookies and reset status instead of deleting
         const account = accountOps.findByUserAndPlatform.get(req.session.userId, platform) as any;
         if (account) {
@@ -283,7 +282,7 @@ router.post('/:platform/sync', requireAuth, async (req, res) => {
     try {
         const { platform } = req.params;
 
-        if (!['Weibo', 'Bilibili', 'Xiaohongshu'].includes(platform)) {
+        if (!['Weibo', 'Bilibili', 'Xiaohongshu', 'Douyin'].includes(platform)) {
             return res.status(400).json({ error: 'Invalid platform' });
         }
 
@@ -293,7 +292,9 @@ router.post('/:platform/sync', requireAuth, async (req, res) => {
             return res.status(404).json({ error: 'Account not found' });
         }
 
-        if (!account.cookies) {
+        // For Douyin, cookies are optional (can use public jingxuan page)
+        // For other platforms, cookies are required
+        if (!account.cookies && platform !== 'Douyin') {
             return res.status(400).json({ error: 'Account not connected. Please login first.' });
         }
 
@@ -307,7 +308,9 @@ router.post('/:platform/sync', requireAuth, async (req, res) => {
         res.json({ message: 'Sync started', platform, status: 'running' });
 
         // Execute sync asynchronously
-        syncPlatformContent(account.id, platform as any, account.cookies)
+        // For Douyin, use empty cookies JSON if not available (will use public page)
+        const cookiesJson = account.cookies || (platform === 'Douyin' ? '[]' : account.cookies);
+        syncPlatformContent(account.id, platform as any, cookiesJson)
             .then(result => {
                 console.log(`Sync completed for ${platform}:`, result);
             })

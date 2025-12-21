@@ -40,7 +40,7 @@ router.get('/:platform', requireAuth, (req, res) => {
     try {
         const { platform } = req.params;
 
-        if (!['Weibo', 'Bilibili', 'Xiaohongshu'].includes(platform)) {
+        if (!['Weibo', 'Bilibili', 'Xiaohongshu', 'Douyin'].includes(platform)) {
             return res.status(400).json({ error: 'Invalid platform' });
         }
 
@@ -108,6 +108,7 @@ router.get('/stats/counts', requireAuth, (req, res) => {
             Weibo: 0,
             Xiaohongshu: 0,
             Bilibili: 0,
+            Douyin: 0,
         };
 
         platformCounts.forEach(({ platform, count }) => {

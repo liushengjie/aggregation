@@ -3,7 +3,7 @@ import { useAuth } from './contexts/AuthContext';
 import Sidebar from './components/Sidebar';
 import SettingsView from './views/SettingsView';
 import InsightsView from './views/InsightsView';
-import LoginForm from './components/LoginForm';
+import LoginModal from './components/LoginModal';
 import HotTrendsView from './views/HotTrendsView';
 import GlobalFocusView from './views/GlobalFocusView';
 import { Platform } from './types';
@@ -14,6 +14,10 @@ const App: React.FC = () => {
   const [activeView, setActiveView] = useState('dashboard');
   const [activePlatform, setActivePlatform] = useState<Platform | 'All'>('All');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const [activeGlobalTab, setActiveGlobalTab] = useState<'public' | 'favorite'>('public');
+  const [globalFocusItemCounts, setGlobalFocusItemCounts] = useState<{ All: number; Weibo: number; Xiaohongshu: number; Bilibili: number; Douyin: number } | undefined>(undefined);
+  const [globalFocusLastUpdated, setGlobalFocusLastUpdated] = useState<string>('');
 
   // Expose sidebar toggle to window for child views
   useEffect(() => {
@@ -38,13 +42,25 @@ const App: React.FC = () => {
     );
   }
 
-  if (!user) {
-    return <LoginForm />;
-  }
+  // Allow access without login - users can view public content
+  // if (!user) {
+  //   return <LoginForm />;
+  // }
 
   const renderContent = () => {
     switch (activeView) {
       case 'settings':
+        // Settings requires login
+        if (!user) {
+          return (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center">
+                <h2 className="text-xl font-bold text-slate-800 mb-2">需要登录</h2>
+                <p className="text-slate-500">请先登录以访问系统配置</p>
+              </div>
+            </div>
+          );
+        }
         return <SettingsView />;
       case 'insights':
         return <InsightsView />;
@@ -59,6 +75,10 @@ const App: React.FC = () => {
             sidebarOpen={sidebarOpen}
             setSidebarOpen={setSidebarOpen}
             scrollToTop={scrollToTop}
+            onLoginClick={() => setLoginModalOpen(true)}
+            onCountsChange={(counts) => setGlobalFocusItemCounts(counts)}
+            onLastUpdatedChange={(lastUpdated) => setGlobalFocusLastUpdated(lastUpdated)}
+            onActiveTabChange={(tab) => setActiveGlobalTab(tab)}
           />
         );
     }
@@ -80,6 +100,9 @@ const App: React.FC = () => {
         }}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        onLoginClick={() => setLoginModalOpen(true)}
+        itemCounts={globalFocusItemCounts}
+        activeGlobalTab={activeGlobalTab}
       />
 
       <main className="flex-1 lg:ml-[260px] ml-0 mr-0 lg:mr-3 my-0 lg:my-3 min-w-0 flex flex-col h-screen lg:h-[calc(100vh-24px)]">
@@ -87,6 +110,15 @@ const App: React.FC = () => {
           {renderContent()}
         </div>
       </main>
+
+      {/* Login Modal */}
+      <LoginModal
+        isOpen={loginModalOpen}
+        onClose={() => setLoginModalOpen(false)}
+        onSuccess={() => {
+          // Login successful, modal will close automatically
+        }}
+      />
     </div>
   );
 };

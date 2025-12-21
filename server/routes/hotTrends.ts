@@ -12,8 +12,8 @@ const router = Router();
 
 type HotTrendPlatform = 'Weibo' | 'Douyin' | 'Baidu' | 'Bilibili';
 
-// Get hot trends for a platform and category
-router.get('/', requireAuth, async (req, res) => {
+// Get hot trends for a platform and category (no auth required)
+router.get('/', async (req, res) => {
     try {
         const platform = req.query.platform as string;
         const category = req.query.category as string;
@@ -36,8 +36,8 @@ router.get('/', requireAuth, async (req, res) => {
     }
 });
 
-// Get available platforms and their categories
-router.get('/meta', requireAuth, (req, res) => {
+// Get available platforms and their categories (no auth required)
+router.get('/meta', (req, res) => {
     const platforms = ['Weibo', 'Douyin', 'Baidu', 'Bilibili'];
     const meta = platforms.map(p => ({
         id: p,
@@ -48,8 +48,8 @@ router.get('/meta', requireAuth, (req, res) => {
     res.json({ platforms: meta });
 });
 
-// Get scraping status
-router.get('/status', requireAuth, (req, res) => {
+// Get scraping status (no auth required)
+router.get('/status', (req, res) => {
     const scrapingPlatforms = getScrapingPlatforms();
     res.json({
         scraping: scrapingPlatforms.length > 0,

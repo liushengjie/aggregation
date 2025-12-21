@@ -9,6 +9,7 @@ import accountsRouter from './routes/accounts.js';
 import globalFocusRouter from './routes/globalFocus.js';
 import imageProxyRouter from './routes/imageProxy.js';
 import hotTrendsRouter from './routes/hotTrends.js';
+import publicItemsRouter from './routes/publicItems.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,6 +45,7 @@ app.use('/api/accounts', accountsRouter);
 app.use('/api/global-focus', globalFocusRouter);
 app.use('/api/image', imageProxyRouter);
 app.use('/api/hot-trends', hotTrendsRouter);
+app.use('/api/public-items', publicItemsRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -75,9 +77,11 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 // Import and start scheduler
 import { startScheduler } from './services/schedulers/globalFocusSchedulerService.js';
 import { startHotTrendScheduler } from './services/schedulers/hotTrendSchedulerService.js';
+import { startPublicScrapingScheduler } from './services/schedulers/publicScrapingSchedulerService.js';
 
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
     startScheduler();
     startHotTrendScheduler();
+    startPublicScrapingScheduler(30);
 });

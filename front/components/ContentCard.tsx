@@ -34,7 +34,9 @@ const UnifiedCard: React.FC<{ item: SocialItem; index?: number }> = ({ item, ind
     ? 'bg-gradient-to-r from-[#ff8200] to-[#ff4500] shadow-red-200/50'
     : item.platform === 'Xiaohongshu'
       ? 'bg-gradient-to-r from-[#ff2442] to-[#e6162d] shadow-rose-200/50'
-      : 'bg-gradient-to-r from-[#00aeec] to-[#007ec4] shadow-blue-200/50';
+      : item.platform === 'Douyin'
+        ? 'bg-gradient-to-r from-black to-gray-800 shadow-gray-200/50'
+        : 'bg-gradient-to-r from-[#00aeec] to-[#007ec4] shadow-blue-200/50';
 
   // Determine image source
   const imageSrc = item.thumbnail || '';
@@ -133,6 +135,11 @@ const UnifiedCard: React.FC<{ item: SocialItem; index?: number }> = ({ item, ind
               ) : item.platform === 'Bilibili' ? (
                 <>
                   <span className="flex items-center gap-0.5"><Play size={10} /> {formatNumber(item.stats.views)}</span>
+                </>
+              ) : item.platform === 'Douyin' ? (
+                <>
+                  <span className="flex items-center gap-0.5"><Heart size={10} /> {formatNumber(item.stats.likes)}</span>
+                  <span className="flex items-center gap-0.5"><MessageSquare size={10} /> {formatNumber(item.stats.comments)}</span>
                 </>
               ) : (
                 <>

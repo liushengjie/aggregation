@@ -97,7 +97,22 @@ export const accountsApi = {
         fetchApi('/accounts/sync/status'),
 };
 
-// Global Focus API
+// Public Items API (no auth required)
+export const publicItemsApi = {
+    getAll: (page = 1, limit = 30, platform?: string) => {
+        const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
+        if (platform) params.append('platform', platform);
+        return fetchApi(`/public-items?${params.toString()}`);
+    },
+
+    getByPlatform: (platform: string, page = 1, limit = 30) =>
+        fetchApi(`/public-items/${platform}?page=${page}&limit=${limit}`),
+
+    getCounts: () =>
+        fetchApi('/public-items/stats/counts'),
+};
+
+// Global Focus API (user-specific, requires auth)
 export const globalFocusApi = {
     getAll: (page = 1, limit = 30) =>
         fetchApi(`/global-focus?page=${page}&limit=${limit}`),

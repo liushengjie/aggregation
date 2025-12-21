@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LayoutDashboard, Settings, TrendingUp, Hash, Sparkles, Layers, X, Flame } from 'lucide-react';
+import { LayoutDashboard, Settings, TrendingUp, Hash, Sparkles, Layers, X, Flame, LogIn, LogOut } from 'lucide-react';
 import { Platform } from '../types';
 import { PLATFORM_NAMES } from '../constants';
-import { globalFocusApi, accountsApi } from '../api/api';
+import { globalFocusApi, accountsApi, publicItemsApi } from '../api/api';
+import { useAuth } from '../contexts/AuthContext';
 import PrismLogo from './PrismLogo';
 
 interface SidebarProps {
@@ -12,6 +13,9 @@ interface SidebarProps {
   setActivePlatform: (p: Platform | 'All') => void;
   isOpen?: boolean;
   onClose?: () => void;
+  onLoginClick?: () => void;
+  itemCounts?: { All: number; Weibo: number; Xiaohongshu: number; Bilibili: number; Douyin: number };
+  activeGlobalTab?: 'public' | 'favorite';
 }
 
 interface ItemCounts {
@@ -19,25 +23,49 @@ interface ItemCounts {
   Weibo: number;
   Xiaohongshu: number;
   Bilibili: number;
+  Douyin: number;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, activePlatform, setActivePlatform, isOpen = true, onClose }) => {
+const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, activePlatform, setActivePlatform, isOpen = true, onClose, onLoginClick, itemCounts: externalItemCounts, activeGlobalTab }) => {
+  const { user, logout } = useAuth();
   const [itemCounts, setItemCounts] = useState<ItemCounts>({
     All: 0,
     Weibo: 0,
     Xiaohongshu: 0,
     Bilibili: 0,
+    Douyin: 0,
   });
 
   // Load item counts and refresh when sync completes
   const prevSyncingPlatformsRef = useRef<Platform[]>([]);
 
+  // Use external counts if provided (from GlobalFocusView), otherwise load from API
   useEffect(() => {
+    if (externalItemCounts) {
+      // Use counts from GlobalFocusView (will update when tab changes)
+      setItemCounts({
+        All: externalItemCounts.All || 0,
+        Weibo: externalItemCounts.Weibo || 0,
+        Xiaohongshu: externalItemCounts.Xiaohongshu || 0,
+        Bilibili: externalItemCounts.Bilibili || 0,
+        Douyin: externalItemCounts.Douyin || 0,
+      });
+      return;
+    }
+
+    // Fallback: Load counts from API if not provided externally
     const loadCounts = async () => {
       try {
-        const data = await globalFocusApi.getCounts();
+        // Use publicItemsApi for all users (public data)
+        const data = await publicItemsApi.getCounts();
         if (data.counts) {
-          setItemCounts(data.counts);
+          setItemCounts({
+            All: data.counts.All || 0,
+            Weibo: data.counts.Weibo || 0,
+            Xiaohongshu: data.counts.Xiaohongshu || 0,
+            Bilibili: data.counts.Bilibili || 0,
+            Douyin: data.counts.Douyin || 0,
+          });
         }
       } catch (err) {
         console.error('Error loading item counts:', err);
@@ -45,6 +73,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, activePlat
     };
 
     const checkSyncStatus = async () => {
+      if (!user) return; // Skip sync status check for non-logged-in users
+
       try {
         const syncData = await accountsApi.getSyncStatus();
         const currentSyncing = syncData.syncingPlatforms || [];
@@ -58,7 +88,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, activePlat
         prevSyncingPlatformsRef.current = currentSyncing;
 
         // If sync just completed, refresh item counts immediately
-        if (syncJustCompleted) {
+        if (syncJustCompleted && !externalItemCounts) {
           await loadCounts();
         }
       } catch (err) {
@@ -67,25 +97,44 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, activePlat
     };
 
     loadCounts();
-    checkSyncStatus();
+    if (user) {
+      checkSyncStatus();
+      // Check sync status every 2 seconds (to detect completion quickly)
+      const syncInterval = setInterval(checkSyncStatus, 2000);
+      // Refresh counts every 30 seconds (as fallback) - only if not using external counts
+      if (!externalItemCounts) {
+        const countsInterval = setInterval(loadCounts, 30000);
+        return () => {
+          clearInterval(syncInterval);
+          clearInterval(countsInterval);
+        };
+      }
+      return () => {
+        clearInterval(syncInterval);
+      };
+    } else {
+      // Refresh counts every 30 seconds for public users - only if not using external counts
+      if (!externalItemCounts) {
+        const countsInterval = setInterval(loadCounts, 30000);
+        return () => {
+          clearInterval(countsInterval);
+        };
+      }
+    }
+  }, [user, externalItemCounts]);
 
-    // Check sync status every 2 seconds (to detect completion quickly)
-    const syncInterval = setInterval(checkSyncStatus, 2000);
-    // Refresh counts every 30 seconds (as fallback)
-    const countsInterval = setInterval(loadCounts, 30000);
-
-    return () => {
-      clearInterval(syncInterval);
-      clearInterval(countsInterval);
-    };
-  }, []);
-
-  const platforms: { id: Platform | 'All'; name: string; icon: React.ReactNode; color: string }[] = [
+  const allPlatforms: { id: Platform | 'All'; name: string; icon: React.ReactNode; color: string }[] = [
     { id: 'All', name: '全部平台', icon: <Layers size={16} />, color: 'text-slate-700' },
     { id: 'Weibo', name: PLATFORM_NAMES.Weibo, icon: <Hash size={16} />, color: 'text-red-500' },
     { id: 'Xiaohongshu', name: PLATFORM_NAMES.Xiaohongshu, icon: <Hash size={16} />, color: 'text-rose-500' },
     { id: 'Bilibili', name: PLATFORM_NAMES.Bilibili, icon: <Hash size={16} />, color: 'text-blue-500' },
+    { id: 'Douyin', name: PLATFORM_NAMES.Douyin, icon: <Hash size={16} />, color: 'text-black' },
   ];
+
+  // Filter out Douyin when activeGlobalTab is 'favorite'
+  const platforms = activeGlobalTab === 'favorite'
+    ? allPlatforms.filter(p => p.id !== 'Douyin')
+    : allPlatforms;
 
   return (
     <>
@@ -205,18 +254,42 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, activePlat
           </section>
         </nav>
 
-        {/* Footer / Settings */}
-        <div className="p-3 mt-auto">
-          <button
-            onClick={() => setActiveView('settings')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 group ${activeView === 'settings'
-              ? 'bg-slate-800 text-white font-bold shadow-md shadow-slate-300/50'
-              : 'bg-white/50 text-slate-500 hover:bg-white hover:text-slate-900 hover:shadow-sm font-medium border border-white/40'
-              }`}
-          >
-            <Settings size={18} className={activeView === 'settings' ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'} />
-            <span className="text-sm text-left">系统配置</span>
-          </button>
+        {/* Footer - Settings (logged-in) or Login (not logged-in) */}
+        <div className="p-3 mt-auto border-t border-white/20 space-y-2">
+          {user ? (
+            <>
+              <button
+                onClick={() => setActiveView('settings')}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 group ${activeView === 'settings'
+                  ? 'bg-slate-800 text-white font-bold shadow-md shadow-slate-300/50'
+                  : 'bg-white/50 text-slate-500 hover:bg-white hover:text-slate-900 hover:shadow-sm font-medium border border-white/40'
+                  }`}
+              >
+                <Settings size={18} className={activeView === 'settings' ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'} />
+                <span className="text-sm text-left">系统配置</span>
+              </button>
+              <button
+                onClick={async () => {
+                  if (window.confirm('确定要登出吗?')) {
+                    await logout();
+                  }
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 group bg-white/50 text-slate-500 hover:bg-red-50 hover:text-red-600 hover:shadow-sm font-medium border border-white/40 hover:border-red-200"
+              >
+                <LogOut size={18} className="text-slate-400 group-hover:text-red-500" />
+                <span className="text-sm text-left">登出</span>
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => onLoginClick?.()}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 group bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white hover:from-indigo-500 hover:via-purple-500 hover:to-pink-500 hover:shadow-lg hover:shadow-indigo-500/30 font-bold border-0 relative overflow-hidden"
+            >
+              <LogIn size={18} className="text-white relative z-10" />
+              <span className="text-sm text-left relative z-10">登录</span>
+              <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+            </button>
+          )}
         </div>
       </aside>
     </>

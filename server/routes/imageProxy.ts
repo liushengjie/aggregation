@@ -32,13 +32,29 @@ router.get('/proxy', async (req, res) => {
       'i0.hdslb.com',
       'i1.hdslb.com',
       'i2.hdslb.com',
+      'i3.hdslb.com',
       's1.hdslb.com',
       's2.hdslb.com',
+      'biliimg.com',
+      'bilicdn.com',
+      'b23.tv',
       // 小红书图片域名
       'xhscdn.com',
       'xhslink.com',
       'sns-webpic-qc.xhscdn.com',
       'ci.xiaohongshu.com',
+      // 抖音图片域名
+      'p3-sign.douyinpic.com',
+      'p6-sign.douyinpic.com',
+      'p9-sign.douyinpic.com',
+      'p26-sign.douyinpic.com',
+      'p29-sign.douyinpic.com',
+      'p3.douyinpic.com',
+      'p6.douyinpic.com',
+      'p9.douyinpic.com',
+      'p26.douyinpic.com',
+      'p29.douyinpic.com',
+      'douyinpic.com',
     ];
     
     const urlObj = new URL(imageUrl);
@@ -60,6 +76,10 @@ router.get('/proxy', async (req, res) => {
         referer = 'https://weibo.com/';
       } else if (imageUrl.includes('xhscdn.com') || imageUrl.includes('xhslink.com')) {
         referer = 'https://www.xiaohongshu.com/';
+      } else if (imageUrl.includes('douyinpic.com')) {
+        referer = 'https://www.douyin.com/';
+      } else if (imageUrl.includes('hdslb.com') || imageUrl.includes('biliimg.com') || imageUrl.includes('bilicdn.com')) {
+        referer = 'https://www.bilibili.com/';
       }
 
       const response = await fetch(imageUrl, {

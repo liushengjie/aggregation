@@ -1,5 +1,5 @@
 
-export type Platform = 'Weibo' | 'Xiaohongshu' | 'Bilibili';
+export type Platform = 'Weibo' | 'Xiaohongshu' | 'Bilibili' | 'Douyin';
 
 export interface SocialItem {
   id: string;

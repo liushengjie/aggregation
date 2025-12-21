@@ -31,7 +31,7 @@ function initSchema() {
     CREATE TABLE IF NOT EXISTS platform_accounts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
-      platform TEXT NOT NULL CHECK(platform IN ('Weibo', 'Bilibili', 'Xiaohongshu')),
+      platform TEXT NOT NULL CHECK(platform IN ('Weibo', 'Bilibili', 'Xiaohongshu', 'Douyin')),
       platform_username TEXT,
       cookies TEXT,
       status TEXT DEFAULT 'disconnected',
@@ -80,13 +80,118 @@ function initSchema() {
     )
   `);
 
+  // Public social items table (for all users, no user_id required)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS public_social_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      platform TEXT NOT NULL CHECK(platform IN ('Weibo', 'Bilibili', 'Xiaohongshu', 'Douyin')),
+      source_url TEXT NOT NULL,
+      source_label TEXT NOT NULL,
+      external_id TEXT NOT NULL,
+      title TEXT,
+      author TEXT,
+      thumbnail TEXT,
+      url TEXT,
+      content TEXT,
+      likes INTEGER DEFAULT 0,
+      comments INTEGER DEFAULT 0,
+      shares INTEGER DEFAULT 0,
+      views INTEGER DEFAULT 0,
+      tags TEXT,
+      fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(platform, source_url, external_id)
+    )
+  `);
+
   // Create indexes for hot_trends
   db.exec(`CREATE INDEX IF NOT EXISTS idx_hot_trends_platform_category ON hot_trends(platform, category_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_hot_trends_fetched_at ON hot_trends(fetched_at)`);
+  
+  // Create indexes for public_social_items
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_public_social_items_platform ON public_social_items(platform)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_public_social_items_source_label ON public_social_items(source_label)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_public_social_items_fetched_at ON public_social_items(fetched_at)`);
+}
+
+// Migration function to update platform_accounts table CHECK constraint
+function migratePlatformAccountsTable() {
+  try {
+    // Check if table exists
+    const tableInfo = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='platform_accounts'`).get();
+    if (!tableInfo) {
+      // Table doesn't exist, initSchema will create it
+      return;
+    }
+
+    // Check if the constraint already includes 'Douyin'
+    const tableSchema = db.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='platform_accounts'`).get() as { sql: string } | undefined;
+    if (tableSchema && tableSchema.sql.includes("'Douyin'")) {
+      // Already migrated
+      return;
+    }
+
+    console.log('[Database] Migrating platform_accounts table to support Douyin...');
+
+    // Temporarily disable foreign keys for migration
+    db.pragma('foreign_keys = OFF');
+
+    try {
+      // Create new table with updated constraint
+      db.exec(`
+        CREATE TABLE platform_accounts_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          platform TEXT NOT NULL CHECK(platform IN ('Weibo', 'Bilibili', 'Xiaohongshu', 'Douyin')),
+          platform_username TEXT,
+          cookies TEXT,
+          status TEXT DEFAULT 'disconnected',
+          last_sync DATETIME,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES users(id),
+          UNIQUE(user_id, platform)
+        )
+      `);
+
+      // Copy data from old table
+      db.exec(`INSERT INTO platform_accounts_new SELECT * FROM platform_accounts`);
+
+      // Drop old table
+      db.exec(`DROP TABLE platform_accounts`);
+
+      // Rename new table
+      db.exec(`ALTER TABLE platform_accounts_new RENAME TO platform_accounts`);
+
+      // Recreate indexes if they existed
+      try {
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_platform_accounts_user_id ON platform_accounts(user_id)`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_platform_accounts_status ON platform_accounts(status)`);
+      } catch {
+        // Indexes may already exist or may not have existed before
+      }
+
+      console.log('[Database] Migration completed successfully');
+    } finally {
+      // Re-enable foreign keys
+      db.pragma('foreign_keys = ON');
+    }
+  } catch (error: any) {
+    console.error('[Database] Migration error:', error.message);
+    // If migration fails, try to clean up
+    try {
+      db.pragma('foreign_keys = OFF');
+      db.exec(`DROP TABLE IF EXISTS platform_accounts_new`);
+      db.pragma('foreign_keys = ON');
+    } catch {
+      // Ignore cleanup errors
+      db.pragma('foreign_keys = ON');
+    }
+  }
 }
 
 // Initialize schema before preparing statements
 initSchema();
+// Run migration after schema init
+migratePlatformAccountsTable();
 
 // User operations
 export const userOps = {
@@ -271,7 +376,7 @@ export const hotTrendOps = {
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `),
 
-  // Get latest hot trends for a platform and category
+  // Get latest hot trends for a platform and category (no limit to return all items)
   findLatest: db.prepare(`
     SELECT * FROM hot_trends
     WHERE platform = ? AND category_id = ?
@@ -299,6 +404,60 @@ export const hotTrendOps = {
   // Count by platform
   countByPlatform: db.prepare(`
     SELECT platform, COUNT(*) as count FROM hot_trends GROUP BY platform
+  `),
+};
+
+// Public social items operations (for all users)
+export const publicItemOps = {
+  // Upsert a public social item
+  upsert: db.prepare(`
+    INSERT INTO public_social_items (platform, source_url, source_label, external_id, title, author, thumbnail, url, content, likes, comments, shares, views, tags)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(platform, source_url, external_id) DO UPDATE SET
+      title = excluded.title,
+      author = excluded.author,
+      thumbnail = excluded.thumbnail,
+      url = excluded.url,
+      content = excluded.content,
+      likes = excluded.likes,
+      comments = excluded.comments,
+      shares = excluded.shares,
+      views = excluded.views,
+      tags = excluded.tags,
+      fetched_at = datetime('now')
+  `),
+
+  // Get public items by platform
+  findByPlatform: db.prepare(`
+    SELECT * FROM public_social_items
+    WHERE platform = ?
+    ORDER BY fetched_at DESC, id DESC
+    LIMIT ? OFFSET ?
+  `),
+
+  // Get all public items
+  findAll: db.prepare(`
+    SELECT * FROM public_social_items
+    ORDER BY fetched_at DESC, id DESC
+    LIMIT ? OFFSET ?
+  `),
+
+  // Get public items by source label
+  findBySourceLabel: db.prepare(`
+    SELECT * FROM public_social_items
+    WHERE platform = ? AND source_label = ?
+    ORDER BY fetched_at DESC, id DESC
+    LIMIT ? OFFSET ?
+  `),
+
+  // Get count by platform
+  countByPlatform: db.prepare(`
+    SELECT platform, COUNT(*) as count FROM public_social_items GROUP BY platform
+  `),
+
+  // Delete old items (older than 7 days)
+  deleteOld: db.prepare(`
+    DELETE FROM public_social_items WHERE fetched_at < datetime('now', '-7 days')
   `),
 };
 

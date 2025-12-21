@@ -1,7 +1,7 @@
 import { chromium, Browser, BrowserContext, Page, Cookie } from 'playwright';
 import crypto from 'crypto';
 
-type Platform = 'Weibo' | 'Bilibili' | 'Xiaohongshu';
+type Platform = 'Weibo' | 'Bilibili' | 'Xiaohongshu' | 'Douyin';
 
 interface LoginSession {
     id: string;
@@ -65,6 +65,17 @@ const PLATFORM_CONFIG: Record<Platform, {
         captchaInputSelector: 'input[placeholder*="验证码"], input[name*="captcha"], input[id*="captcha"]', // 验证码输入框
         captchaSubmitSelector: '.login-btn, button[type="submit"]', // 验证码提交按钮
     },
+    Douyin: {
+        loginUrl: 'https://www.douyin.com/',
+        authCookieNames: ['sessionid', 'sid_guard', 'uid_tt', 'sid_tt', 'sessionid_ss'],
+        minCookieCount: 4,
+        getUsernameSelector: '.avatar-wrapper, .user-avatar, [class*="avatar"]',
+        usernameSelector: 'input[placeholder*="手机号"], input[placeholder*="邮箱"], input[type="text"]',
+        passwordSelector: 'input[type="password"]',
+        submitSelector: '.login-button, button[type="submit"]',
+        captchaInputSelector: 'input[placeholder*="验证码"], input[placeholder*="请输入验证码"], input[type="text"][maxlength="6"], input[type="text"][maxlength="4"], input[class*="code"], input[class*="verify"], input[name*="code"], input[name*="verify"]',
+        captchaSubmitSelector: 'button:has-text("确认"), button:has-text("完成"), button[type="button"]:not(:has-text("获取验证码")):not(:has-text("重新获取")), .confirm-btn, button.confirm',
+    },
 };
 
 /**
@@ -103,21 +114,41 @@ export async function getLoginSession(sessionId: string): Promise<LoginSession |
     const session = activeSessions.get(sessionId);
     if (!session) return undefined;
 
-    // Check if SMS captcha is needed (only for Xiaohongshu, after credentials are submitted)
-    // SMS captcha only appears after submitting username/password
-    if (session.platform === 'Xiaohongshu' && session.page && session.status === 'waiting') {
+    // Check if SMS captcha is needed (for Xiaohongshu and Douyin)
+    // For Xiaohongshu: SMS captcha appears after submitting username/password
+    // For Douyin: SMS captcha appears after scanning QR code
+    if ((session.platform === 'Xiaohongshu' || session.platform === 'Douyin') && session.page && session.status === 'waiting') {
         try {
             const config = PLATFORM_CONFIG[session.platform];
             if (config.captchaInputSelector) {
-                const captchaInput = await session.page.$(config.captchaInputSelector);
-                if (captchaInput) {
-                    const isVisible = await captchaInput.isVisible().catch(() => false);
-                    if (isVisible) {
-                        session.needsCaptcha = true;
+                // Try each selector in the list (they are comma-separated)
+                const selectors = config.captchaInputSelector.split(',').map(s => s.trim());
+                let found = false;
+                
+                for (const selector of selectors) {
+                    try {
+                        const captchaInput = await session.page.$(selector);
+                        if (captchaInput) {
+                            const isVisible = await captchaInput.isVisible().catch(() => false);
+                            if (isVisible) {
+                                console.log(`[${session.platform}] Captcha input field detected with selector: ${selector}`);
+                                session.needsCaptcha = true;
+                                found = true;
+                                break;
+                            }
+                        }
+                    } catch (e) {
+                        // Continue to next selector
+                        continue;
                     }
-                } else {
-                    // If input doesn't exist, reset needsCaptcha
-                    session.needsCaptcha = false;
+                }
+                
+                if (!found) {
+                    // If no input found, reset needsCaptcha only if it was previously set
+                    // (keep false if it was already false, to avoid false negatives during scanning)
+                    if (session.needsCaptcha === true) {
+                        session.needsCaptcha = false;
+                    }
                 }
             }
         } catch {
@@ -207,9 +238,10 @@ export async function submitCredentials(
         // Usually takes 2-3 seconds for SMS to be sent and UI to update
         await page.waitForTimeout(3000);
         
-        // For Xiaohongshu, check if SMS captcha input field appears after submitting credentials
-        // SMS captcha only shows up after username/password validation
-        if (session.platform === 'Xiaohongshu' && config.captchaInputSelector) {
+        // For Xiaohongshu and Douyin, check if SMS captcha input field appears
+        // Xiaohongshu: after submitting username/password
+        // Douyin: after scanning QR code
+        if ((session.platform === 'Xiaohongshu' || session.platform === 'Douyin') && config.captchaInputSelector) {
             try {
                 // Wait a bit more for the captcha input field to appear in DOM
                 const captchaInput = await page.$(config.captchaInputSelector).catch(() => null);
@@ -242,7 +274,7 @@ export async function submitCredentials(
 }
 
 /**
- * Submit captcha code (for Xiaohongshu)
+ * Submit captcha code (for Xiaohongshu and Douyin)
  */
 export async function submitCaptcha(
     sessionId: string,
@@ -261,17 +293,84 @@ export async function submitCaptcha(
     try {
         const page = session.page;
 
-        // Fill captcha code
-        await page.fill(config.captchaInputSelector, captchaCode);
+        console.log(`[${session.platform}] Filling captcha code: ${captchaCode.substring(0, 2)}...`);
+        
+        // Fill captcha code - try each selector until one works
+        const inputSelectors = config.captchaInputSelector.split(',').map(s => s.trim());
+        let filled = false;
+        for (const selector of inputSelectors) {
+            try {
+                const input = await page.$(selector);
+                if (input) {
+                    const isVisible = await input.isVisible().catch(() => false);
+                    if (isVisible) {
+                        console.log(`[${session.platform}] Found captcha input with selector: ${selector}`);
+                        await page.fill(selector, captchaCode);
+                        filled = true;
+                        break;
+                    }
+                }
+            } catch {
+                continue;
+            }
+        }
+        
+        if (!filled) {
+            throw new Error('Could not find visible captcha input field');
+        }
         await page.waitForTimeout(500);
 
-        // Click submit
-        await page.click(config.captchaSubmitSelector);
+        // For Douyin, try multiple ways to find and click submit button
+        if (session.platform === 'Douyin') {
+            // Try to find submit button with various selectors
+            let clicked = false;
+            const submitSelectors = [
+                'button:has-text("确认")',
+                'button:has-text("完成")',
+                'button[type="button"]',
+                '.confirm-btn',
+                'button.confirm',
+                config.captchaSubmitSelector,
+            ];
+            
+            for (const selector of submitSelectors) {
+                try {
+                    const button = await page.$(selector).catch(() => null);
+                    if (button) {
+                        const isVisible = await button.isVisible().catch(() => false);
+                        if (isVisible) {
+                            console.log(`[${session.platform}] Clicking submit button with selector: ${selector}`);
+                            await button.click();
+                            clicked = true;
+                            break;
+                        }
+                    }
+                } catch {
+                    continue;
+                }
+            }
+            
+            if (!clicked) {
+                // Last resort: try clicking by text content
+                console.log(`[${session.platform}] Trying to click button by text content`);
+                await page.click('button:has-text("确认")').catch(() => {
+                    throw new Error('Could not find submit button');
+                });
+            }
+        } else {
+            // For other platforms, use standard selector
+            await page.click(config.captchaSubmitSelector);
+        }
+        
+        await page.waitForTimeout(3000); // Wait for submission to process
 
-        console.log(`Captcha submitted for ${session.platform}`);
+        // After submitting captcha, assume it's no longer needed
+        session.needsCaptcha = false;
+
+        console.log(`[${session.platform}] Captcha submitted successfully`);
         return { success: true };
     } catch (error: any) {
-        console.error('Submit captcha error:', error);
+        console.error(`[${session.platform}] Submit captcha error:`, error);
         return { success: false, error: error.message };
     }
 }
@@ -438,34 +537,94 @@ async function runLoginBrowser(session: LoginSession): Promise<void> {
             const initialCookies = await context.cookies();
             const initialCookieNames = new Set(initialCookies.map(c => c.name));
             console.log(`[${session.platform}] Initial cookies: ${initialCookies.length}`);
+            console.log(`[${session.platform}] Initial cookie names:`, initialCookies.map(c => c.name).join(', '));
 
+            let checkCount = 0;
             while (Date.now() - startTime < maxWait && !loggedIn) {
                 await page.waitForTimeout(2000);
+                checkCount++;
 
                 const currentCookies = await context.cookies();
                 const newCookies = currentCookies.filter(c => !initialCookieNames.has(c.name));
 
-                // Check for authenticated cookies
+                // Log cookie changes every 5 checks or if there are new cookies
+                if (checkCount % 5 === 0 || newCookies.length > 0) {
+                    console.log(`[${session.platform}] Check #${checkCount}: Total cookies: ${currentCookies.length}, New cookies: ${newCookies.length}`);
+                    if (newCookies.length > 0) {
+                        console.log(`[${session.platform}] New cookie names:`, newCookies.map(c => c.name).join(', '));
+                        console.log(`[${session.platform}] New cookie details:`, JSON.stringify(newCookies.map(c => ({ name: c.name, value: c.value.substring(0, 50) + '...' })), null, 2));
+                    }
+                }
+
+                // Check for authenticated cookies (only in NEW cookies)
                 const foundAuthCookies = newCookies.filter(c =>
                     config.authCookieNames.some(authName =>
                         c.name.toLowerCase().includes(authName.toLowerCase())
                     )
                 );
 
-                if (foundAuthCookies.length > 0) {
-                    console.log(`[${session.platform}] Found auth cookies: ${foundAuthCookies.map(c => c.name).join(', ')}`);
-                    loggedIn = true;
+                if (newCookies.length > 0) {
+                    console.log(`[${session.platform}] Checking auth cookies - Config auth names:`, config.authCookieNames.join(', '));
+                    console.log(`[${session.platform}] Found auth cookies in new cookies:`, foundAuthCookies.map(c => c.name).join(', '));
                 }
 
-                // Also check cookie count increase
-                if (currentCookies.length > initialCookies.length + 3) {
+                // For Douyin, require more specific auth cookies
+                // Critical cookies only appear AFTER SMS verification is completed
+                // So we should skip login detection if captcha is still needed
+                if (session.platform === 'Douyin') {
+                    // Skip login detection if captcha is still needed (user hasn't submitted SMS code yet)
+                    if (session.needsCaptcha) {
+                        console.log(`[${session.platform}] ⚠ Waiting for SMS verification code - skipping login detection`);
+                        // Continue waiting, don't check for login yet
+                    } else {
+                        // After SMS verification, check for critical cookies
+                        const criticalCookies = ['sessionid', 'uid_tt', 'sid_tt', 'sid_guard'];
+                        const hasCriticalCookie = newCookies.some(c => 
+                            criticalCookies.some(crit => c.name.toLowerCase().includes(crit.toLowerCase()))
+                        );
+                        
+                        // Also check in ALL cookies (not just new ones) because these might appear gradually
+                        const allCriticalCookies = currentCookies.filter(c => 
+                            criticalCookies.some(crit => c.name.toLowerCase().includes(crit.toLowerCase()))
+                        );
+                        const hasCriticalCookieInAll = allCriticalCookies.length > 0;
+                        
+                        console.log(`[${session.platform}] Critical cookie check: hasCriticalCookie=${hasCriticalCookie}, foundAuthCookies.length=${foundAuthCookies.length}, allCriticalCookies=${allCriticalCookies.length}`);
+                        if (hasCriticalCookie) {
+                            console.log(`[${session.platform}] Critical cookies found in new cookies:`, newCookies.filter(c => 
+                                criticalCookies.some(crit => c.name.toLowerCase().includes(crit.toLowerCase()))
+                            ).map(c => c.name).join(', '));
+                        }
+                        if (hasCriticalCookieInAll) {
+                            console.log(`[${session.platform}] Critical cookies found in all cookies:`, allCriticalCookies.map(c => c.name).join(', '));
+                        }
+                        
+                        // Login is detected if we have critical cookies (at least 1 is sufficient after SMS verification)
+                        if (hasCriticalCookieInAll && allCriticalCookies.length >= 1) {
+                            console.log(`[${session.platform}] ✓ Login detected! Found critical auth cookies: ${allCriticalCookies.map(c => c.name).join(', ')}`);
+                            loggedIn = true;
+                        } else if (hasCriticalCookieInAll) {
+                            console.log(`[${session.platform}] ⚠ Login not confirmed yet - hasCriticalCookieInAll: ${hasCriticalCookieInAll}, waiting for more cookies...`);
+                        }
+                    }
+                } else {
+                    // For other platforms, original logic
+                    if (foundAuthCookies.length > 0) {
+                        console.log(`[${session.platform}] ✓ Login detected! Found auth cookies: ${foundAuthCookies.map(c => c.name).join(', ')}`);
+                        loggedIn = true;
+                    }
+                }
+
+                // Also check cookie count increase (but not for Douyin as it has many initial cookies)
+                if (session.platform !== 'Douyin' && currentCookies.length > initialCookies.length + 3) {
                     const allAuthCookies = currentCookies.filter(c =>
                         config.authCookieNames.some(authName =>
                             c.name.toLowerCase().includes(authName.toLowerCase())
                         )
                     );
+                    console.log(`[${session.platform}] Cookie count check: current=${currentCookies.length}, initial=${initialCookies.length}, allAuthCookies=${allAuthCookies.length}`);
                     if (allAuthCookies.length > 0 && newCookies.length > 0) {
-                        console.log(`[${session.platform}] Login detected via cookie increase`);
+                        console.log(`[${session.platform}] ✓ Login detected via cookie increase`);
                         loggedIn = true;
                     }
                 }
@@ -480,7 +639,35 @@ async function runLoginBrowser(session: LoginSession): Promise<void> {
             // Give time for cookies to be set
             await page.waitForTimeout(3000);
 
+            // For Douyin, also verify login by checking page elements
+            if (session.platform === 'Douyin') {
+                try {
+                    // Wait a bit more for page to settle after login
+                    await page.waitForTimeout(2000);
+                    const currentUrl = page.url();
+                    console.log(`[${session.platform}] Current page URL: ${currentUrl}`);
+                    const loggedInIndicator = await page.$(config.getUsernameSelector || '.avatar-wrapper, .user-avatar, [class*="avatar"]');
+                    console.log(`[${session.platform}] Logged in indicator found: ${loggedInIndicator !== null}`);
+                    if (!loggedInIndicator) {
+                        // Check if we're redirected to a logged-in page
+                        if (!currentUrl.includes('/user/') && !currentUrl.includes('/feed') && !currentUrl.includes('/recommend')) {
+                            console.error(`[${session.platform}] Login verification failed - no user indicator and URL doesn't match logged-in patterns`);
+                            throw new Error('Douyin login verification failed - no user indicator found');
+                        } else {
+                            console.log(`[${session.platform}] Login verified via URL pattern: ${currentUrl}`);
+                        }
+                    } else {
+                        console.log(`[${session.platform}] Login verified via page element`);
+                    }
+                } catch (error: any) {
+                    console.error(`[${session.platform}] Login verification error:`, error.message);
+                    throw new Error('Login verification failed - please try again');
+                }
+            }
+
             const cookies = await context.cookies();
+            console.log(`[${session.platform}] Final cookie count: ${cookies.length}`);
+            console.log(`[${session.platform}] Final cookie names:`, cookies.map(c => c.name).join(', '));
 
             if (cookies.length > 0) {
                 session.cookies = cookies;
@@ -492,6 +679,7 @@ async function runLoginBrowser(session: LoginSession): Promise<void> {
                         const usernameElement = await page.$(config.getUsernameSelector);
                         if (usernameElement) {
                             const username = await usernameElement.getAttribute('alt') ||
+                                await usernameElement.getAttribute('title') ||
                                 await usernameElement.textContent();
                             if (username) {
                                 session.platformUsername = username.trim();

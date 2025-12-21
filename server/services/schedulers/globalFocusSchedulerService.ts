@@ -81,7 +81,7 @@ async function syncAllConnectedAccounts(): Promise<void> {
 }
 
 // Sync interval in milliseconds (10 minutes)
-const SYNC_INTERVAL = 10 * 60 * 1000;
+const SYNC_INTERVAL = 30 * 60 * 1000;
 let schedulerInterval: NodeJS.Timeout | null = null;
 
 /**

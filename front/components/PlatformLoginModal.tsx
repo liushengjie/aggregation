@@ -3,6 +3,7 @@ import { accountsApi } from '../api/api';
 import { PLATFORMS_CONFIG, PLATFORM_NAMES } from '../constants';
 import { Platform } from '../types';
 import { X, ExternalLink, Check, AlertCircle, Loader2, RefreshCw, Unplug, ShieldCheck, Info, QrCode, Lock } from 'lucide-react';
+import PopupLoginModal from './PopupLoginModal';
 
 interface PlatformAccount {
     id: number;
@@ -35,6 +36,10 @@ const PlatformLoginModal: React.FC = () => {
     const [submittingCredentials, setSubmittingCredentials] = useState(false);
     const [captchaCode, setCaptchaCode] = useState('');
     const [submittingCaptcha, setSubmittingCaptcha] = useState(false);
+    
+    // Popup login state
+    const [showPopupLogin, setShowPopupLogin] = useState(false);
+    const [popupLoginPlatform, setPopupLoginPlatform] = useState<Platform | null>(null);
 
     // Polling ref to keep track of active polls
     const pollRef = useRef<NodeJS.Timeout | null>(null);
@@ -216,6 +221,15 @@ const PlatformLoginModal: React.FC = () => {
     const handleConnect = async (platform: Platform) => {
         if (actionLoading) return;
 
+        // 对于抖音，使用 Popup 登录方式（更简单可靠，避免验证码检测问题）
+        if (platform === 'Douyin') {
+            setPopupLoginPlatform(platform);
+            setShowPopupLogin(true);
+            setActionLoading(null);
+            return;
+        }
+
+        // 原有的 Playwright 登录方式（保留作为备选）
         setActionLoading(platform);
         setError('');
         setLoginStatus('正在启动登录窗口...');
@@ -387,7 +401,28 @@ const PlatformLoginModal: React.FC = () => {
     }
 
     return (
-        <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-300">
+        <>
+            {/* Popup Login Modal */}
+            {showPopupLogin && popupLoginPlatform && (
+                <PopupLoginModal
+                    platform={popupLoginPlatform}
+                    onClose={() => {
+                        setShowPopupLogin(false);
+                        setPopupLoginPlatform(null);
+                        setActionLoading(null);
+                    }}
+                    onSuccess={async () => {
+                        await loadAccounts();
+                        setShowPopupLogin(false);
+                        setPopupLoginPlatform(null);
+                        setActionLoading(null);
+                        setLoginStatus('登录成功！');
+                        setTimeout(() => setLoginStatus(''), 3000);
+                    }}
+                />
+            )}
+            
+            <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-300">
             {error && (
                 <div className="bg-rose-50/80 backdrop-blur-sm border border-rose-200 text-rose-600 px-4 py-3 rounded-md flex items-center gap-2 text-xs font-bold shadow-sm">
                     <AlertCircle size={16} />
@@ -673,6 +708,7 @@ const PlatformLoginModal: React.FC = () => {
                 </div>
             </div>
         </div>
+        </>
     );
 };
 

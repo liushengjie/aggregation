@@ -1,6 +1,6 @@
 import { chromium, Browser, BrowserContext, Page, Cookie } from 'playwright';
 
-export type Platform = 'Weibo' | 'Bilibili' | 'Xiaohongshu';
+export type Platform = 'Weibo' | 'Bilibili' | 'Xiaohongshu' | 'Douyin';
 
 export interface SocialItem {
     externalId: string;

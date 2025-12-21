@@ -136,7 +136,7 @@ export async function scrapeAllPlatforms(): Promise<void> {
 }
 
 // Scheduler interval
-const SCRAPE_INTERVAL = 10 * 60 * 1000; // 10 minutes
+const SCRAPE_INTERVAL = 60 * 60 * 1000; // 10 minutes
 let schedulerInterval: NodeJS.Timeout | null = null;
 
 /**
