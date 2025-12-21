@@ -18,6 +18,7 @@ interface LoginSession {
     browser?: Browser;            // 浏览器实例
     context?: BrowserContext;     // 浏览器上下文
     page?: Page;                  // 页面实例
+    needsCaptcha?: boolean;       // 是否需要验证码
 }
 
 // Store active login sessions
@@ -32,6 +33,8 @@ const PLATFORM_CONFIG: Record<Platform, {
     usernameSelector?: string;    // 用户名输入框
     passwordSelector?: string;    // 密码输入框
     submitSelector?: string;      // 提交按钮
+    captchaInputSelector?: string; // 验证码输入框
+    captchaSubmitSelector?: string; // 验证码提交按钮
 }> = {
     Weibo: {
         loginUrl: 'https://passport.weibo.com/sso/signin?entry=miniblog&source=miniblog&disp=popup',
@@ -59,6 +62,8 @@ const PLATFORM_CONFIG: Record<Platform, {
         usernameSelector: 'input[placeholder="请输入手机号"]',
         passwordSelector: 'input[placeholder="请输入密码"]',
         submitSelector: '.login-btn',
+        captchaInputSelector: 'input[placeholder*="验证码"], input[name*="captcha"], input[id*="captcha"]', // 验证码输入框
+        captchaSubmitSelector: '.login-btn, button[type="submit"]', // 验证码提交按钮
     },
 };
 
@@ -94,9 +99,31 @@ export async function startLoginSession(
 /**
  * Get login session status
  */
-export function getLoginSession(sessionId: string): LoginSession | undefined {
+export async function getLoginSession(sessionId: string): Promise<LoginSession | undefined> {
     const session = activeSessions.get(sessionId);
     if (!session) return undefined;
+
+    // Check if SMS captcha is needed (only for Xiaohongshu, after credentials are submitted)
+    // SMS captcha only appears after submitting username/password
+    if (session.platform === 'Xiaohongshu' && session.page && session.status === 'waiting') {
+        try {
+            const config = PLATFORM_CONFIG[session.platform];
+            if (config.captchaInputSelector) {
+                const captchaInput = await session.page.$(config.captchaInputSelector);
+                if (captchaInput) {
+                    const isVisible = await captchaInput.isVisible().catch(() => false);
+                    if (isVisible) {
+                        session.needsCaptcha = true;
+                    }
+                } else {
+                    // If input doesn't exist, reset needsCaptcha
+                    session.needsCaptcha = false;
+                }
+            }
+        } catch {
+            // If check fails, keep current state
+        }
+    }
 
     // Return a safe copy without browser instances
     return {
@@ -110,6 +137,7 @@ export function getLoginSession(sessionId: string): LoginSession | undefined {
         createdAt: session.createdAt,
         screenshot: session.screenshot,
         screenshotVersion: session.screenshotVersion,
+        needsCaptcha: session.needsCaptcha,
     };
 }
 
@@ -172,13 +200,119 @@ export async function submitCredentials(
         await page.fill(config.passwordSelector, password);
         await page.waitForTimeout(500);
 
-        // Click submit
+        // Click submit to send credentials
         await page.click(config.submitSelector);
+        
+        // Wait for server response (SMS code to be sent if needed)
+        // Usually takes 2-3 seconds for SMS to be sent and UI to update
+        await page.waitForTimeout(3000);
+        
+        // For Xiaohongshu, check if SMS captcha input field appears after submitting credentials
+        // SMS captcha only shows up after username/password validation
+        if (session.platform === 'Xiaohongshu' && config.captchaInputSelector) {
+            try {
+                // Wait a bit more for the captcha input field to appear in DOM
+                const captchaInput = await page.$(config.captchaInputSelector).catch(() => null);
+                if (captchaInput) {
+                    // Check if the input is actually visible (not hidden)
+                    const isVisible = await captchaInput.isVisible().catch(() => false);
+                    if (isVisible) {
+                        session.needsCaptcha = true;
+                        console.log(`[${session.platform}] SMS verification code required after credentials submission`);
+                    } else {
+                        session.needsCaptcha = false;
+                    }
+                } else {
+                    // Input field not found, no SMS captcha needed
+                    session.needsCaptcha = false;
+                }
+            } catch (error) {
+                // If check fails, assume no captcha needed for now
+                console.error(`[${session.platform}] Error checking for SMS captcha:`, error);
+                session.needsCaptcha = false;
+            }
+        }
 
-        console.log(`Credentials submitted for ${session.platform}`);
+        console.log(`Credentials submitted for ${session.platform}, needsCaptcha: ${session.needsCaptcha || false}`);
         return { success: true };
     } catch (error: any) {
         console.error('Submit credentials error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Submit captcha code (for Xiaohongshu)
+ */
+export async function submitCaptcha(
+    sessionId: string,
+    captchaCode: string
+): Promise<{ success: boolean; error?: string }> {
+    const session = activeSessions.get(sessionId);
+    if (!session || !session.page) {
+        return { success: false, error: 'Session not found or page not ready' };
+    }
+
+    const config = PLATFORM_CONFIG[session.platform];
+    if (!config.captchaInputSelector || !config.captchaSubmitSelector) {
+        return { success: false, error: 'Captcha not supported for this platform' };
+    }
+
+    try {
+        const page = session.page;
+
+        // Fill captcha code
+        await page.fill(config.captchaInputSelector, captchaCode);
+        await page.waitForTimeout(500);
+
+        // Click submit
+        await page.click(config.captchaSubmitSelector);
+
+        console.log(`Captcha submitted for ${session.platform}`);
+        return { success: true };
+    } catch (error: any) {
+        console.error('Submit captcha error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Cancel a login session and close its browser
+ */
+export async function cancelLoginSession(sessionId: string): Promise<{ success: boolean; error?: string }> {
+    const session = activeSessions.get(sessionId);
+    if (!session) {
+        return { success: false, error: 'Session not found' };
+    }
+
+    try {
+        // Close browser if still open (regardless of session status)
+        if (session.browser) {
+            try {
+                await session.browser.close();
+                console.log(`Login session ${sessionId} cancelled, browser closed`);
+            } catch (err) {
+                console.error('Error closing browser:', err);
+            }
+        }
+
+        // Update status if still pending or waiting
+        if (session.status === 'pending' || session.status === 'waiting') {
+            session.status = 'failed';
+            session.error = 'Cancelled by user';
+        }
+
+        // Clear browser references
+        session.browser = undefined;
+        session.context = undefined;
+        session.page = undefined;
+
+        // Remove from active sessions
+        activeSessions.delete(sessionId);
+
+        return { success: true };
+    } catch (error: any) {
+        console.error('Cancel login session error:', error);
         return { success: false, error: error.message };
     }
 }

@@ -18,6 +18,7 @@ interface LoginDialogState {
     screenshot: string | null;
     screenshotVersion: number;
     supportsPassword: boolean;
+    needsCaptcha?: boolean;
 }
 
 const PlatformLoginModal: React.FC = () => {
@@ -32,6 +33,8 @@ const PlatformLoginModal: React.FC = () => {
     const [showPasswordForm, setShowPasswordForm] = useState(false);
     const [credentials, setCredentials] = useState({ username: '', password: '' });
     const [submittingCredentials, setSubmittingCredentials] = useState(false);
+    const [captchaCode, setCaptchaCode] = useState('');
+    const [submittingCaptcha, setSubmittingCaptcha] = useState(false);
 
     // Polling ref to keep track of active polls
     const pollRef = useRef<NodeJS.Timeout | null>(null);
@@ -93,16 +96,23 @@ const PlatformLoginModal: React.FC = () => {
                     }
                 }
                 
-                // Update supportsPassword if available
-                if (currentDialog && statusData.supportsPassword !== undefined && statusData.supportsPassword !== currentDialog.supportsPassword) {
-                    setLoginDialog(prev => {
-                        const updated = prev ? {
-                            ...prev,
-                            supportsPassword: statusData.supportsPassword,
-                        } : null;
-                        loginDialogRef.current = updated;
-                        return updated;
-                    });
+                // Update supportsPassword and needsCaptcha if available
+                if (currentDialog) {
+                    const needsUpdate = 
+                        (statusData.supportsPassword !== undefined && statusData.supportsPassword !== currentDialog.supportsPassword) ||
+                        (statusData.needsCaptcha !== undefined && statusData.needsCaptcha !== currentDialog.needsCaptcha);
+                    
+                    if (needsUpdate) {
+                        setLoginDialog(prev => {
+                            const updated = prev ? {
+                                ...prev,
+                                supportsPassword: statusData.supportsPassword ?? prev.supportsPassword,
+                                needsCaptcha: statusData.needsCaptcha ?? prev.needsCaptcha,
+                            } : null;
+                            loginDialogRef.current = updated;
+                            return updated;
+                        });
+                    }
                 }
 
                 if (statusData.status === 'success') {
@@ -233,6 +243,7 @@ const PlatformLoginModal: React.FC = () => {
                             screenshot: screenshotData.screenshot || null,
                             screenshotVersion: statusData.screenshotVersion || 0,
                             supportsPassword: statusData.supportsPassword ?? true,
+                            needsCaptcha: statusData.needsCaptcha ?? false,
                         };
                         setLoginDialog(dialogState);
                         loginDialogRef.current = dialogState;
@@ -256,17 +267,31 @@ const PlatformLoginModal: React.FC = () => {
         }
     };
 
-    const handleCloseLoginDialog = () => {
+    const handleCloseLoginDialog = async () => {
+        // 停止轮询
         if (pollRef.current) clearInterval(pollRef.current);
         if (screenshotPollRef.current) clearInterval(screenshotPollRef.current);
-        // 清理同步触发记录
+        
+        // 如果有活动的登录会话，取消它并关闭后端浏览器
         if (loginDialog?.platform && loginDialog?.sessionId) {
-            syncTriggeredRef.current.delete(`${loginDialog.platform}-${loginDialog.sessionId}`);
+            const syncKey = `${loginDialog.platform}-${loginDialog.sessionId}`;
+            syncTriggeredRef.current.delete(syncKey);
+            
+            try {
+                await accountsApi.cancelLogin(loginDialog.platform, loginDialog.sessionId);
+                console.log(`已取消登录会话: ${loginDialog.platform}`);
+            } catch (err) {
+                console.error('取消登录会话失败:', err);
+                // 即使取消失败，也继续关闭对话框
+            }
         }
+        
         setLoginDialog(null);
         loginDialogRef.current = null;
         setShowPasswordForm(false);
         setCredentials({ username: '', password: '' });
+        setCaptchaCode('');
+        setSubmittingCaptcha(false);
         setActionLoading(null);
         setLoginStatus('');
     };
@@ -288,9 +313,40 @@ const PlatformLoginModal: React.FC = () => {
                 credentials.password
             );
             setLoginStatus('正在验证登录信息...');
+            // Wait a bit and check if captcha is needed
+            setTimeout(async () => {
+                try {
+                    const statusData = await accountsApi.checkLoginStatus(loginDialog!.platform, loginDialog!.sessionId);
+                    if (statusData.needsCaptcha) {
+                        setLoginDialog(prev => prev ? { ...prev, needsCaptcha: true } : null);
+                        loginDialogRef.current = loginDialogRef.current ? { ...loginDialogRef.current, needsCaptcha: true } : null;
+                    }
+                } catch {
+                    // Ignore errors
+                }
+            }, 2000);
         } catch (err: any) {
             setError(err.message || '登录失败，请重试');
             setSubmittingCredentials(false);
+        }
+    };
+
+    const handleSubmitCaptcha = async () => {
+        if (!loginDialog || !captchaCode) {
+            setError('请输入验证码');
+            return;
+        }
+
+        setSubmittingCaptcha(true);
+        setError('');
+
+        try {
+            await accountsApi.submitCaptcha(loginDialog.platform, loginDialog.sessionId, captchaCode);
+            setLoginStatus('正在验证验证码...');
+            setCaptchaCode('');
+        } catch (err: any) {
+            setError(err.message || '验证码提交失败，请重试');
+            setSubmittingCaptcha(false);
         }
     };
 
@@ -360,7 +416,7 @@ const PlatformLoginModal: React.FC = () => {
                         >
                             <div className="flex items-center gap-4">
                                 <div className={`w-12 h-12 ${config.color} rounded-md flex items-center justify-center shadow-lg shadow-indigo-100 group-hover:scale-105 transition-transform duration-300`}>
-                                    {config.icon('w-6 h-6 text-white')}
+                                    {config.icon('w-7 h-7 text-white')}
                                 </div>
                                 <div>
                                     <h4 className="text-sm font-black text-slate-800">{PLATFORM_NAMES[platform]}</h4>
@@ -429,12 +485,12 @@ const PlatformLoginModal: React.FC = () => {
             {/* Login Dialog */}
             {loginDialog && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-md shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                    <div className="bg-white rounded-md shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
                         {/* Header */}
                         <div className="flex items-center justify-between p-4 border-b border-slate-200">
                             <div className="flex items-center gap-3">
                                 <div className={`w-10 h-10 ${PLATFORMS_CONFIG[loginDialog.platform].color} rounded-md flex items-center justify-center`}>
-                                    {PLATFORMS_CONFIG[loginDialog.platform].icon('w-5 h-5 text-white')}
+                                    {PLATFORMS_CONFIG[loginDialog.platform].icon('w-6 h-6 text-white')}
                                 </div>
                                 <div>
                                     <h3 className="font-black text-sm text-slate-800">
@@ -456,7 +512,7 @@ const PlatformLoginModal: React.FC = () => {
                             {/* Screenshot */}
                             {loginDialog.screenshot && (
                                 <div className="relative">
-                                    <div className="bg-slate-50 rounded-md p-6 border-2 border-slate-200 flex items-center justify-center">
+                                    <div className="bg-slate-50 rounded-md p-8 border-2 border-slate-200 flex items-center justify-center">
                                         <img
                                             src={loginDialog.screenshot}
                                             alt="登录页面"
@@ -514,6 +570,38 @@ const PlatformLoginModal: React.FC = () => {
                                                     className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                                                 />
                                             </div>
+                                            {/* SMS Verification Code input (only for Xiaohongshu when needed) */}
+                                            {loginDialog.platform === 'Xiaohongshu' && loginDialog.needsCaptcha && (
+                                                <div>
+                                                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                                                        短信验证码
+                                                    </label>
+                                                    <div className="flex gap-2">
+                                                        <input
+                                                            type="text"
+                                                            value={captchaCode}
+                                                            onChange={(e) => setCaptchaCode(e.target.value)}
+                                                            placeholder="请输入收到的短信验证码"
+                                                            maxLength={6}
+                                                            className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                                        />
+                                                        <button
+                                                            onClick={handleSubmitCaptcha}
+                                                            disabled={submittingCaptcha || !captchaCode}
+                                                            className="px-4 py-2 bg-indigo-600 text-white text-sm font-bold rounded-md hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                                        >
+                                                            {submittingCaptcha ? (
+                                                                <Loader2 className="animate-spin" size={16} />
+                                                            ) : (
+                                                                '提交'
+                                                            )}
+                                                        </button>
+                                                    </div>
+                                                    <p className="text-xs text-slate-500 mt-1">
+                                                        验证码已发送到您的手机，请查收短信
+                                                    </p>
+                                                </div>
+                                            )}
                                             <div className="flex gap-2">
                                                 <button
                                                     onClick={handleSubmitCredentials}
@@ -536,6 +624,7 @@ const PlatformLoginModal: React.FC = () => {
                                                     onClick={() => {
                                                         setShowPasswordForm(false);
                                                         setCredentials({ username: '', password: '' });
+                                                        setCaptchaCode('');
                                                     }}
                                                     className="px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-md border border-slate-300 transition-all"
                                                 >

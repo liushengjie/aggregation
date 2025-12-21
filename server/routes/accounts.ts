@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth } from '../services/auth';
 import { accountOps } from '../services/database';
-import { startLoginSession, getLoginSession, getSessionScreenshot, submitCredentials } from '../services/loginService';
+import { startLoginSession, getSessionScreenshot, submitCredentials, submitCaptcha } from '../services/loginService';
 import { getSyncStatusForUser, setSyncRunning, clearSyncRunning } from '../services/schedulerService';
 
 const router = Router();
@@ -70,7 +70,8 @@ router.get('/:platform/login/status/:sessionId', requireAuth, async (req, res) =
             return res.status(400).json({ error: 'Invalid platform' });
         }
 
-        const session = getLoginSession(sessionId);
+        const { getLoginSession } = await import('../services/loginService');
+        const session = await getLoginSession(sessionId);
 
         if (!session) {
             return res.status(404).json({ error: 'Session not found or expired' });
@@ -106,6 +107,7 @@ router.get('/:platform/login/status/:sessionId', requireAuth, async (req, res) =
             screenshot: session.screenshot,
             screenshotVersion: session.screenshotVersion,
             supportsPassword,
+            needsCaptcha: session.needsCaptcha || false,
         });
     } catch (error) {
         console.error('Check login status error:', error);
@@ -189,6 +191,56 @@ router.post('/:platform/login/credentials/:sessionId', requireAuth, async (req, 
     } catch (error) {
         console.error('Submit credentials error:', error);
         res.status(500).json({ error: 'Failed to submit credentials' });
+    }
+});
+
+// Submit captcha code (for Xiaohongshu)
+router.post('/:platform/login/captcha/:sessionId', requireAuth, async (req, res) => {
+    try {
+        const { platform, sessionId } = req.params;
+        const { captcha } = req.body;
+
+        if (!['Xiaohongshu'].includes(platform)) {
+            return res.status(400).json({ error: 'Captcha only supported for Xiaohongshu' });
+        }
+
+        if (!captcha) {
+            return res.status(400).json({ error: 'Captcha code is required' });
+        }
+
+        const result = await submitCaptcha(sessionId, captcha);
+
+        if (!result.success) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        res.json({ message: 'Captcha submitted successfully' });
+    } catch (error) {
+        console.error('Submit captcha error:', error);
+        res.status(500).json({ error: 'Failed to submit captcha' });
+    }
+});
+
+// Cancel login session
+router.delete('/:platform/login/:sessionId', requireAuth, async (req, res) => {
+    try {
+        const { platform, sessionId } = req.params;
+
+        if (!['Weibo', 'Bilibili', 'Xiaohongshu'].includes(platform)) {
+            return res.status(400).json({ error: 'Invalid platform' });
+        }
+
+        const { cancelLoginSession } = await import('../services/loginService');
+        const result = await cancelLoginSession(sessionId);
+
+        if (!result.success) {
+            return res.status(404).json({ error: result.error || 'Failed to cancel session' });
+        }
+
+        res.json({ message: 'Login session cancelled', platform, sessionId });
+    } catch (error) {
+        console.error('Cancel login session error:', error);
+        res.status(500).json({ error: 'Failed to cancel login session' });
     }
 });
 

@@ -72,6 +72,9 @@ export const accountsApi = {
     disconnect: (platform: string) =>
         fetchApi(`/accounts/${platform}`, { method: 'DELETE' }),
 
+    cancelLogin: (platform: string, sessionId: string) =>
+        fetchApi(`/accounts/${platform}/login/${sessionId}`, { method: 'DELETE' }),
+
     sync: (platform: string) =>
         fetchApi(`/accounts/${platform}/sync`, { method: 'POST' }),
 
@@ -82,6 +85,12 @@ export const accountsApi = {
         fetchApi(`/accounts/${platform}/login/credentials/${sessionId}`, {
             method: 'POST',
             body: JSON.stringify({ username, password }),
+        }),
+
+    submitCaptcha: (platform: string, sessionId: string, captcha: string) =>
+        fetchApi(`/accounts/${platform}/login/captcha/${sessionId}`, {
+            method: 'POST',
+            body: JSON.stringify({ captcha }),
         }),
 
     getSyncStatus: () =>
