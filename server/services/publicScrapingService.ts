@@ -282,7 +282,7 @@ export async function scrapePublicContent(
       }
     }
     
-    // Wait for content to load (no scrolling)
+    // Wait for content to load
     try {
       // Wait for body to be ready
       await page.waitForSelector('body', { timeout: 10000 });
@@ -292,6 +292,28 @@ export async function scrapePublicContent(
     
     // Wait a bit for initial content to render
     await page.waitForTimeout(5000);
+    
+    // For Weibo, scroll to load more content
+    if (platform === 'Weibo') {
+      try {
+        console.log(`[Public Scraping] ${platform} - ${sourceLabel}: Scrolling to load more content...`);
+        // Scroll multiple times to trigger lazy loading
+        for (let scrollIdx = 0; scrollIdx < 10; scrollIdx++) {
+          await page.evaluate((idx) => {
+            window.scrollTo(0, window.innerHeight * (idx + 1));
+          }, scrollIdx);
+          await page.waitForTimeout(600); // Wait 600ms between scrolls
+        }
+        // Scroll back to top
+        await page.evaluate(() => {
+          window.scrollTo(0, 0);
+        });
+        await page.waitForTimeout(2000);
+        console.log(`[Public Scraping] ${platform} - ${sourceLabel}: Finished scrolling`);
+      } catch (e: any) {
+        console.warn(`[Public Scraping] ${platform} - ${sourceLabel}: Error during scrolling (${e.message}), continuing...`);
+      }
+    }
     
     // For Weibo, add extra wait if on visitor page
     if (platform === 'Weibo' && finalUrl.includes('passport.weibo.com/visitor')) {

@@ -554,8 +554,8 @@ export const WEIBO_SCRIPT = `
     allElements = Array.from(document.querySelectorAll('.Feed_wrap_3NP5t, .WB_card, .woo-panel-main'));
   }
   
-  // 遍历每个元素，最多采集30条
-  for (var i = 0; i < allElements.length && i < 30; i++) {
+  // 遍历每个元素，最多采集100条
+  for (var i = 0; i < allElements.length && i < 100; i++) {
     var el = allElements[i];
     
     // 微博正文 - 优先使用 detail_wbtext 开头的元素
@@ -588,7 +588,6 @@ export const WEIBO_SCRIPT = `
     var shareEl = el.querySelector('[title*="转发"], [aria-label*="转发"], .WB_forward, [class*="repost"]');
     
     var title = titleEl ? titleEl.textContent.trim().slice(0, 200) : '';
-    if (title.length === 0) continue;
     
     var extractNum = function(text) {
       if (!text) return 0;
@@ -604,6 +603,32 @@ export const WEIBO_SCRIPT = `
                         linkEl.href.match(/\\/status\\/(\\d+)/);
       if (statusMatch && statusMatch[1]) {
         externalId = statusMatch[1];
+      }
+    }
+    
+    // 对于视频类微博，如果没有文本标题，尝试从视频元素或描述中获取
+    if (title.length === 0) {
+      // 尝试查找视频相关的标题或描述
+      var videoTitleEl = el.querySelector('[class*="video"] [class*="title"], [class*="video"] [class*="desc"], [class*="media"] [class*="title"]');
+      if (videoTitleEl) {
+        title = videoTitleEl.textContent.trim().slice(0, 200);
+      }
+      
+      // 如果还是没有标题，检查是否有视频元素
+      if (title.length === 0) {
+        var videoEl = el.querySelector('video, [class*="video"], [class*="media-video"]');
+        if (videoEl) {
+          // 尝试从视频的 title 或 alt 属性获取
+          var videoTitle = videoEl.getAttribute('title') || videoEl.getAttribute('alt') || '';
+          if (videoTitle && videoTitle.length > 0) {
+            title = videoTitle.trim().slice(0, 200);
+          }
+        }
+      }
+      
+      // 如果仍然没有标题，使用默认标题（至少保证视频微博能被采集）
+      if (title.length === 0) {
+        title = '视频微博 ' + externalId;
       }
     }
     
@@ -658,6 +683,24 @@ export const WEIBO_SCRIPT = `
           if (url && !url.includes('avatar') && !url.includes('head_avatar')) {
             thumbnail = url;
             break;
+          }
+        }
+      }
+    }
+    
+    // 方式5: 对于视频类微博，尝试获取视频封面图
+    if (!thumbnail) {
+      var videoEl = el.querySelector('video, [class*="video"], [class*="media-video"]');
+      if (videoEl) {
+        // 尝试从 video 元素的 poster 属性获取封面
+        var videoPoster = videoEl.getAttribute('poster') || videoEl.getAttribute('data-poster');
+        if (videoPoster) {
+          thumbnail = videoPoster;
+        } else {
+          // 尝试查找视频封面图片
+          var videoCover = el.querySelector('[class*="video"] img, [class*="media-video"] img, .video-cover img, .media-cover img');
+          if (videoCover) {
+            thumbnail = getImageUrl(videoCover);
           }
         }
       }
