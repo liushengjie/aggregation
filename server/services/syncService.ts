@@ -38,7 +38,7 @@ const BILIBILI_SCRIPT = `
   var results = [];
   var elements = document.querySelectorAll('.bili-video-card, .video-card, .feed-card, .recommended-card');
   
-  for (var i = 0; i < elements.length && i < 100; i++) {
+  for (var i = 0; i < elements.length && i < 30; i++) {
     var el = elements[i];
     var titleEl = el.querySelector('.bili-video-card__info--tit, .title, a[title], [class*="title"]');
     var authorEl = el.querySelector('.bili-video-card__info--author, .up-name, .name, [class*="author"]');
@@ -125,18 +125,47 @@ const BILIBILI_SCRIPT = `
 const WEIBO_SCRIPT = `
 (function() {
   var results = [];
-  var elements = document.querySelectorAll('.Feed_wrap_3NP5t, .WB_card, .woo-panel-main');
   
-  for (var i = 0; i < elements.length && i < 100; i++) {
-    var el = elements[i];
-    var titleEl = el.querySelector('.woo-lg-cut-2, .WB_text, .detail_wbtext_4CRf9, [class*="text"]');
-    var authorEl = el.querySelector('.head_name_24eEB, .WB_info a, [class*="head_name"]');
-    var avatarEl = el.querySelector('.woo-avatar-img, .WB_face img, [class*="avatar"] img');
-    var linkEl = el.querySelector('a[href*="/status/"], a[href*="weibo.com"]');
+  // 首先找到所有以 Feed_body 开头的元素
+  var allElements = Array.from(document.querySelectorAll('[class^="Feed_body"]'));
+  
+  // 如果没有找到 Feed_body 开头的元素，使用备用选择器
+  if (allElements.length === 0) {
+    allElements = Array.from(document.querySelectorAll('.Feed_wrap_3NP5t, .WB_card, .woo-panel-main'));
+  }
+  
+  // 遍历每个元素，最多采集30条
+  for (var i = 0; i < allElements.length && i < 30; i++) {
+    var el = allElements[i];
     
-    var likeEl = el.querySelector('[title*="赞"], .WB_like, [class*="like"]');
-    var commentEl = el.querySelector('[title*="评论"], .WB_comment, [class*="comment"]');
-    var shareEl = el.querySelector('[title*="转发"], .WB_forward, [class*="repost"]');
+    // 微博正文 - 优先使用 detail_wbtext 开头的元素
+    var titleEl = el.querySelector('[class^="detail_wbtext"]');
+    if (!titleEl) {
+      titleEl = el.querySelector('.woo-lg-cut-2, .WB_text, [class*="text"]');
+    }
+    
+    // 作者名 - 优先使用 head_name_24eEB，从 span 中获取
+    var authorEl = el.querySelector('.head_name_24eEB span, .head_name_24eEB');
+    if (!authorEl) {
+      authorEl = el.querySelector('.WB_info a, [class*="head_name"]');
+    }
+    
+    // 头像图片
+    var avatarEl = el.querySelector('.woo-avatar-img');
+    if (!avatarEl) {
+      avatarEl = el.querySelector('.WB_face img, [class*="avatar"] img');
+    }
+    
+    // 微博链接 - 优先从时间链接中提取（包含微博ID）
+    var linkEl = el.querySelector('.head-info_time_6sFQg[href*="/"], a[href*="/status/"]');
+    if (!linkEl) {
+      linkEl = el.querySelector('a[href*="weibo.com"]');
+    }
+    
+    // 互动数据 - 使用更精确的选择器
+    var likeEl = el.querySelector('[title*="赞"], [aria-label*="赞"], .WB_like, [class*="like"]');
+    var commentEl = el.querySelector('[title*="评论"], [aria-label*="评论"], .WB_comment, [class*="comment"]');
+    var shareEl = el.querySelector('[title*="转发"], [aria-label*="转发"], .WB_forward, [class*="repost"]');
     
     var title = titleEl ? titleEl.textContent.trim().slice(0, 200) : '';
     if (title.length === 0) continue;
@@ -147,17 +176,89 @@ const WEIBO_SCRIPT = `
       return match ? parseInt(match[0]) : 0;
     };
     
+    // 提取微博ID - 优先从链接URL中提取（格式：/u/1687426162/Qj7sZDb3o 或 /status/xxxxx）
     var externalId = 'weibo-' + Date.now() + '-' + i;
     if (linkEl && linkEl.href) {
-      var statusMatch = linkEl.href.match(/\\/status\\/(\\d+)/);
-      if (statusMatch) externalId = statusMatch[1];
+      // 匹配格式：/u/xxx/xxxxx 或 /status/xxxxx
+      var statusMatch = linkEl.href.match(/\\/(?:u\\/\\d+\\/)?([A-Za-z0-9]+)$/) || 
+                        linkEl.href.match(/\\/status\\/(\\d+)/);
+      if (statusMatch && statusMatch[1]) {
+        externalId = statusMatch[1];
+      }
+    }
+    
+    // 提取作者名 - 优先从span的title或textContent获取
+    var author = '未知用户';
+    if (authorEl) {
+      author = authorEl.getAttribute('title') || authorEl.textContent.trim();
+    }
+    
+    // 提取缩略图 - 多种方式尝试
+    var thumbnail = '';
+    
+    // 辅助函数：获取图片URL（支持懒加载）
+    var getImageUrl = function(img) {
+      if (!img) return '';
+      return img.src || 
+             img.getAttribute('data-src') || 
+             img.getAttribute('data-lazy-src') ||
+             img.getAttribute('data-original') ||
+             '';
+    };
+    
+    // 方式1: 查找 .woo-picture-slot 中的 img（最优先）
+    var slotImg = el.querySelector('.woo-picture-slot img');
+    if (slotImg) {
+      thumbnail = getImageUrl(slotImg);
+    }
+    
+    // 方式2: 查找所有 picture_focusImg 开头的图片
+    if (!thumbnail) {
+      var focusImgs = el.querySelectorAll('[class^="picture_focusImg"]');
+      if (focusImgs.length > 0) {
+        thumbnail = getImageUrl(focusImgs[0]);
+      }
+    }
+    
+    // 方式3: 查找 .picture_item_3zpCn 中的图片
+    if (!thumbnail) {
+      var pictureItem = el.querySelector('.picture_item_3zpCn img, .picture_pic_eLDxR img');
+      if (pictureItem) {
+        thumbnail = getImageUrl(pictureItem);
+      }
+    }
+    
+    // 方式4: 查找任何在 picture 容器中的图片（排除头像）
+    if (!thumbnail) {
+      var pictureContainer = el.querySelector('.picture, [class*="picture-box"]');
+      if (pictureContainer) {
+        var picImgs = pictureContainer.querySelectorAll('img:not(.woo-avatar-img)');
+        for (var j = 0; j < picImgs.length; j++) {
+          var url = getImageUrl(picImgs[j]);
+          if (url && !url.includes('avatar') && !url.includes('head_avatar')) {
+            thumbnail = url;
+            break;
+          }
+        }
+      }
+    }
+    
+    // 清理URL（处理可能的相对路径或协议相对路径）
+    // 注意：保留 URL 参数，因为微博图片可能需要这些参数才能正常访问
+    if (thumbnail) {
+      if (thumbnail.startsWith('//')) {
+        thumbnail = 'https:' + thumbnail;
+      } else if (thumbnail.startsWith('/')) {
+        thumbnail = 'https://weibo.com' + thumbnail;
+      }
+      // 不删除 URL 参数，因为微博图片可能需要这些参数（如 ?KID=...）
     }
     
     results.push({
       externalId: externalId,
       title: title,
-      author: authorEl ? authorEl.textContent.trim() : '未知用户',
-      thumbnail: avatarEl ? avatarEl.src : '',
+      author: author,
+      thumbnail: thumbnail,
       url: linkEl ? linkEl.href : 'https://weibo.com',
       likes: extractNum(likeEl ? likeEl.textContent : ''),
       comments: extractNum(commentEl ? commentEl.textContent : ''),
@@ -176,7 +277,7 @@ const XIAOHONGSHU_SCRIPT = `
   var results = [];
   var elements = document.querySelectorAll('section[class*="note"], .note-item, [class*="feed"] section');
   
-  for (var i = 0; i < elements.length && i < 100; i++) {
+  for (var i = 0; i < elements.length && i < 30; i++) {
     var el = elements[i];
     var titleEl = el.querySelector('.title, .note-title, [class*="title"], .desc');
     var authorEl = el.querySelector('.name, .author-name, [class*="name"], .nickname');
@@ -263,17 +364,17 @@ export async function syncPlatformContent(
     await page.goto(config.homeUrl, { waitUntil: 'domcontentloaded', timeout: 1800000 });
     await page.waitForTimeout(5000);
 
-    // Scroll to load more content (30 times for ~100 items)
+    // Scroll to load more content (10 times for ~30 items)
     console.log(`[${platform}] Starting to scroll and load content...`);
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 10; i++) {
       await page.evaluate('window.scrollBy(0, window.innerHeight * 2)');
-      await page.waitForTimeout(2000); // Wait longer for content to load
-      if (i % 10 === 9) {
+      await page.waitForTimeout(1500); // Wait for content to load
+      if (i % 5 === 4) {
         console.log(`[${platform}] Scrolled ${i + 1} times...`);
       }
     }
     // Extra wait for final content to render
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(2000);
 
     // Scrape content based on platform using string scripts
     let items: ScrapedItem[] = [];

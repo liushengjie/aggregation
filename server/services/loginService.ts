@@ -118,7 +118,10 @@ export function getLoginSession(sessionId: string): LoginSession | undefined {
  */
 export async function getSessionScreenshot(sessionId: string): Promise<string | null> {
     const session = activeSessions.get(sessionId);
-    if (!session || !session.page) return null;
+    if (!session || !session.page || !session.browser) {
+        // Return last known screenshot if available
+        return session?.screenshot || null;
+    }
 
     try {
         const screenshot = await session.page.screenshot({
@@ -127,7 +130,14 @@ export async function getSessionScreenshot(sessionId: string): Promise<string | 
         });
         const base64 = screenshot.toString('base64');
         return `data:image/png;base64,${base64}`;
-    } catch (error) {
+    } catch (error: any) {
+        // If browser/page is closed, return last known screenshot silently
+        if (error.message?.includes('closed') || 
+            error.message?.includes('Target page') || 
+            error.message?.includes('Target closed')) {
+            return session.screenshot || null;
+        }
+        // Only log unexpected errors
         console.error('Screenshot error:', error);
         return session.screenshot || null;
     }
@@ -203,7 +213,7 @@ function calculateHash(data: string): string {
  * Capture screenshot and detect changes
  */
 async function captureAndCheckScreenshot(session: LoginSession): Promise<void> {
-    if (!session.page) return;
+    if (!session.page || !session.browser) return;
 
     try {
         const screenshot = await session.page.screenshot({
@@ -221,7 +231,14 @@ async function captureAndCheckScreenshot(session: LoginSession): Promise<void> {
 
         session.screenshot = `data:image/png;base64,${base64}`;
         session.lastScreenshotHash = hash;
-    } catch (error) {
+    } catch (error: any) {
+        // Silently ignore errors if browser/page is closed (expected behavior)
+        if (error.message?.includes('closed') || 
+            error.message?.includes('Target page') || 
+            error.message?.includes('Target closed')) {
+            return;
+        }
+        // Only log unexpected errors
         console.error('Screenshot capture error:', error);
     }
 }
@@ -376,6 +393,10 @@ async function runLoginBrowser(session: LoginSession): Promise<void> {
             setTimeout(async () => {
                 try {
                     console.log(`Closing browser for ${session.platform}...`);
+                    // Clear browser references before closing
+                    session.browser = undefined;
+                    session.context = undefined;
+                    session.page = undefined;
                     await browser?.close();
                 } catch {
                     // Ignore close errors

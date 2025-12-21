@@ -33,6 +33,3 @@ export const PLATFORMS_CONFIG = {
   }
 };
 
-export const MOCK_ACCOUNTS: AccountConfig[] = [];
-
-export const MOCK_ITEMS: SocialItem[] = [];

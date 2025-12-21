@@ -5,6 +5,7 @@ import { initDatabase } from './services/database.js';
 import authRouter from './routes/auth.js';
 import accountsRouter from './routes/accounts.js';
 import itemsRouter from './routes/items.js';
+import imageProxyRouter from './routes/imageProxy.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -33,6 +34,7 @@ app.use(session({
 app.use('/api/auth', authRouter);
 app.use('/api/accounts', accountsRouter);
 app.use('/api/items', itemsRouter);
+app.use('/api/image', imageProxyRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {

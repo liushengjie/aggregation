@@ -1,14 +1,14 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import Sidebar from './components/Sidebar';
 import ContentCard from './components/ContentCard';
 import SettingsView from './components/SettingsView';
 import InsightsView from './components/InsightsView';
 import LoginForm from './components/LoginForm';
-import { MOCK_ITEMS, PLATFORM_NAMES } from './constants';
+import { PLATFORM_NAMES } from './constants';
 import { Platform, SocialItem } from './types';
-import { itemsApi } from './services/api';
-import { Search, Bell, Calendar, SlidersHorizontal, Loader2, RefreshCw, User, LogOut, ChevronDown, LayoutGrid } from 'lucide-react';
+import { itemsApi } from './api/api';
+import { Search, Bell, Calendar, SlidersHorizontal, Loader2, RefreshCw, User, LogOut, ChevronDown, LayoutGrid, Settings } from 'lucide-react';
 
 const App: React.FC = () => {
   const { user, loading: authLoading, logout } = useAuth();
@@ -17,22 +17,36 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [items, setItems] = useState<SocialItem[]>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
-  const [useMockData, setUseMockData] = useState(true);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [totalItems, setTotalItems] = useState(0);
+  const [itemCounts, setItemCounts] = useState<{ All: number; Weibo: number; Xiaohongshu: number; Bilibili: number }>({
+    All: 0,
+    Weibo: 0,
+    Xiaohongshu: 0,
+    Bilibili: 0,
+  });
+  const itemsPerPage = 30;
 
-  // Load items from API
-  const loadItems = async () => {
+  // Load items from API with pagination
+  const loadItems = useCallback(async (page: number = 1, append: boolean = false) => {
     if (!user) return;
     setItemsLoading(true);
     try {
-      const data = await itemsApi.getAll(1, 100);
+      const data = activePlatform === 'All' 
+        ? await itemsApi.getAll(page, itemsPerPage)
+        : await itemsApi.getByPlatform(activePlatform, page, itemsPerPage);
+
       if (data.items && data.items.length > 0) {
         const transformedItems: SocialItem[] = data.items.map((item: any) => ({
           id: `api-${item.id}`,
           platform: item.platform as Platform,
           title: item.title || '',
           author: item.author || '',
-          thumbnail: item.thumbnail || `https://picsum.photos/seed/${item.id}/600/400`,
+          thumbnail: item.thumbnail || '',
           url: item.url || '#',
           timestamp: item.fetched_at || new Date().toISOString(),
           stats: {
@@ -44,49 +58,97 @@ const App: React.FC = () => {
           tags: item.tags || [],
         }));
 
-        // Interleave items to ensure mixed display
-        const platforms = ['Weibo', 'Xiaohongshu', 'Bilibili'] as Platform[];
-        const groupedItems: Record<Platform, SocialItem[]> = {
-          Weibo: [],
-          Xiaohongshu: [],
-          Bilibili: []
-        };
-
-        transformedItems.forEach(item => {
-          if (groupedItems[item.platform]) {
-            groupedItems[item.platform].push(item);
-          }
-        });
-
-        const interleavedItems: SocialItem[] = [];
-        const maxCount = Math.max(...Object.values(groupedItems).map(g => g.length));
-
-        for (let i = 0; i < maxCount; i++) {
-          platforms.forEach(p => {
-            if (groupedItems[p][i]) {
-              interleavedItems.push(groupedItems[p][i]);
-            }
-          });
+        if (append) {
+          setItems(prev => [...prev, ...transformedItems]);
+        } else {
+          setItems(transformedItems);
         }
 
-        setItems(interleavedItems);
-        setUseMockData(false);
+        // Update pagination state
+        if (data.pagination) {
+          setTotalItems(data.pagination.total);
+          setHasMore(page < data.pagination.pages);
+        } else {
+          setHasMore(data.items.length === itemsPerPage);
+        }
       } else {
-        setUseMockData(true);
+        if (!append) {
+          setItems([]);
+        }
+        setHasMore(false);
       }
     } catch (err) {
-      console.log('Using mock data due to API error');
-      setUseMockData(true);
+      console.error('Error loading items:', err);
     } finally {
       setItemsLoading(false);
     }
-  };
+  }, [user, activePlatform]);
 
+  // Load more items (for pagination)
+  const loadMore = useCallback(() => {
+    if (!hasMore || itemsLoading) return;
+    const nextPage = currentPage + 1;
+    setCurrentPage(nextPage);
+    loadItems(nextPage, true);
+  }, [hasMore, itemsLoading, currentPage, loadItems]);
+
+  // Scroll container ref
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Handle scroll to load more
   useEffect(() => {
-    loadItems();
+    if (activeView !== 'dashboard') return;
+    
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    let ticking = false;
+    const handleScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const { scrollTop, scrollHeight, clientHeight } = container;
+          // 当滚动到距离底部 300px 时触发加载
+          if (scrollHeight - scrollTop - clientHeight < 300 && hasMore && !itemsLoading) {
+            loadMore();
+          }
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [activeView, hasMore, itemsLoading, loadMore]);
+
+  // Load item counts
+  useEffect(() => {
+    if (!user) return;
+    const loadCounts = async () => {
+      try {
+        const data = await itemsApi.getCounts();
+        if (data.counts) {
+          setItemCounts(data.counts);
+        }
+      } catch (err) {
+        console.error('Error loading item counts:', err);
+      }
+    };
+    loadCounts();
+    // Refresh counts every 30 seconds
+    const interval = setInterval(loadCounts, 30000);
+    return () => clearInterval(interval);
   }, [user]);
 
-  const displayItems = useMockData ? MOCK_ITEMS : items;
+  // Reset and load first page when platform changes
+  useEffect(() => {
+    if (!user) return;
+    setCurrentPage(1);
+    setHasMore(true);
+    loadItems(1, false);
+  }, [user, activePlatform, loadItems]);
+
+  const displayItems = items;
 
   const filteredItems = useMemo(() => {
     let filtered = displayItems;
@@ -124,59 +186,44 @@ const App: React.FC = () => {
       default:
         return (
           <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Dashboard Header */}
-            <div className="ipad-glass p-4 rounded-lg flex items-center justify-between border border-white/60">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-white/50 rounded-lg flex items-center justify-center text-indigo-600 shadow-sm border border-white/50">
-                  <LayoutGrid size={20} />
-                </div>
-                <div>
-                  <h2 className="text-lg font-black text-slate-800 tracking-tight leading-none">
-                    {activePlatform === 'All' ? '全网聚焦' : `${PLATFORM_NAMES[activePlatform as Platform]} 精选`}
-                  </h2>
-                  <p className="text-[10px] font-bold text-slate-500 mt-1">
-                    {useMockData
-                      ? '示例数据模式'
-                      : `已同步 ${filteredItems.length} 条内容`}
-                  </p>
-                </div>
-              </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={loadItems}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white/60 hover:bg-white border border-white/50 rounded-lg text-xs font-bold text-slate-600 transition-all shadow-sm hover:shadow-md"
-                >
-                  <RefreshCw size={14} className={itemsLoading ? 'animate-spin' : ''} />
-                  刷新
-                </button>
-                <button className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 text-white rounded-lg text-xs font-bold hover:bg-slate-700 transition-all shadow-md shadow-slate-300/50">
-                  <SlidersHorizontal size={14} />
-                  筛选
-                </button>
-              </div>
-            </div>
-
-            {itemsLoading ? (
+            {itemsLoading && items.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-24 space-y-3 ipad-glass rounded-lg border border-white/60">
                 <Loader2 className="animate-spin text-indigo-600" size={24} />
-                <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">Syncing...</p>
+                <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">加载中...</p>
+              </div>
+            ) : filteredItems.length === 0 ? (
+              <div className="py-24 text-center ipad-glass rounded-lg border border-white/60">
+                <div className="w-12 h-12 bg-white/50 rounded-lg flex items-center justify-center mx-auto mb-3 border border-white/50">
+                  <Search size={20} className="text-slate-400" />
+                </div>
+                <h3 className="text-sm font-black text-slate-800">暂无内容</h3>
+                <p className="text-xs text-slate-500 font-medium mt-1">
+                  {searchQuery ? '尝试更换关键词' : '等待数据同步或点击刷新'}
+                </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 pb-10">
-                {filteredItems.map(item => (
-                  <ContentCard key={item.id} item={item} />
-                ))}
-                {filteredItems.length === 0 && (
-                  <div className="col-span-full py-24 text-center ipad-glass rounded-lg border border-white/60">
-                    <div className="w-12 h-12 bg-white/50 rounded-lg flex items-center justify-center mx-auto mb-3 border border-white/50">
-                      <Search size={20} className="text-slate-400" />
+              <>
+                <div className="columns-1 sm:columns-3 lg:columns-4 xl:columns-5 2xl:columns-6 gap-4 pb-10">
+                  {filteredItems.map(item => (
+                    <ContentCard key={item.id} item={item} />
+                  ))}
+                </div>
+                {/* Loading indicator at bottom */}
+                {hasMore && itemsLoading && (
+                  <div className="flex justify-center py-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                    <div className="flex items-center gap-3 text-slate-400">
+                      <Loader2 className="animate-spin" size={20} />
+                      <span className="text-sm font-medium">加载更多内容...</span>
                     </div>
-                    <h3 className="text-sm font-black text-slate-800">暂无内容</h3>
-                    <p className="text-xs text-slate-500 font-medium mt-1">尝试更换关键词</p>
                   </div>
                 )}
-              </div>
+                {!hasMore && items.length > 0 && (
+                  <div className="text-center py-8 text-slate-400 text-xs font-medium animate-in fade-in duration-300">
+                    已加载全部 {totalItems || items.length} 条消息
+                  </div>
+                )}
+              </>
             )}
           </div>
         );
@@ -189,45 +236,81 @@ const App: React.FC = () => {
         activeView={activeView}
         setActiveView={setActiveView}
         activePlatform={activePlatform}
-        setActivePlatform={setActivePlatform}
+        setActivePlatform={(platform) => {
+          setActivePlatform(platform);
+          // Reset pagination when platform changes
+          setCurrentPage(1);
+          setHasMore(true);
+        }}
       />
 
       <main className="flex-1 ml-[260px] mr-3 my-3 min-w-0 flex flex-col h-[calc(100vh-24px)]">
-        <header className="h-14 ipad-glass rounded-lg mb-4 px-4 flex items-center justify-between shrink-0 z-40 border border-white/60">
-          <div className="max-w-sm w-full relative group">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={16} />
-            <input
-              type="text"
-              placeholder="搜索..."
-              className="w-full pl-9 pr-4 py-2 bg-white/50 border border-transparent rounded-lg text-xs font-bold focus:bg-white focus:border-indigo-200 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none placeholder:font-medium placeholder:text-slate-400"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1">
-              <button className="p-2 text-slate-500 hover:bg-white hover:text-indigo-600 rounded-lg transition-all relative">
-                <Bell size={18} />
-                <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-rose-500 rounded-full border border-white"></span>
-              </button>
-              <button className="p-2 text-slate-500 hover:bg-white hover:text-indigo-600 rounded-lg transition-all">
-                <Calendar size={18} />
-              </button>
+        <header className="ipad-glass rounded-lg mb-4 px-4 py-3 flex items-center justify-between shrink-0 z-40 border border-white/60">
+          {/* Left: Title, Stats and Search */}
+          <div className="flex items-center gap-4 flex-1 min-w-0">
+            {/* Title and Stats */}
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <div className="w-10 h-10 bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 rounded-lg flex items-center justify-center text-white shadow-md shadow-indigo-200/50">
+                <LayoutGrid size={20} strokeWidth={2.5} />
+              </div>
+              <div className="flex-shrink-0">
+                <h2 className="text-base font-black text-slate-800 tracking-tight leading-none whitespace-nowrap">
+                  {activePlatform === 'All' ? '全网聚焦' : `${PLATFORM_NAMES[activePlatform as Platform]} 精选`}
+                </h2>
+                <p className="text-[10px] font-bold text-slate-500 mt-0.5 whitespace-nowrap">
+                  {`已同步 ${activePlatform === 'All' ? itemCounts.All : itemCounts[activePlatform as keyof typeof itemCounts]} 条内容`}
+                </p>
+              </div>
             </div>
 
-            <div className="h-6 w-px bg-slate-200/50"></div>
+            {/* Search */}
+            <div className="max-w-xs w-full relative group flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors pointer-events-none" size={16} />
+              <input
+                type="text"
+                placeholder="搜索内容..."
+                className="w-full pl-9 pr-4 py-2 bg-white/50 border border-transparent rounded-lg text-xs font-bold focus:bg-white focus:border-indigo-200 focus:ring-2 focus:ring-indigo-500/20 transition-all outline-none placeholder:font-medium placeholder:text-slate-400"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
 
+          {/* Right: Actions */}
+          <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+            {/* Refresh Button */}
+            <button
+              onClick={() => {
+                setCurrentPage(1);
+                setHasMore(true);
+                loadItems(1, false);
+              }}
+              disabled={itemsLoading}
+              className="flex items-center gap-1.5 px-3 py-2 bg-white/60 hover:bg-white border border-white/50 rounded-lg text-xs font-bold text-slate-600 transition-all shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+              title="刷新内容"
+            >
+              <RefreshCw size={14} className={itemsLoading ? 'animate-spin' : ''} />
+              <span className="hidden sm:inline">刷新</span>
+            </button>
+
+            {/* Divider */}
+            <div className="h-6 w-px bg-slate-200/50 mx-1"></div>
+
+            {/* Notification */}
+            <button className="p-2 text-slate-500 hover:bg-white hover:text-indigo-600 rounded-lg transition-all relative" title="通知">
+              <Bell size={18} />
+              <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-rose-500 rounded-full border border-white"></span>
+            </button>
+
+            {/* User Profile */}
             <div className="relative">
               <button
                 onClick={() => setIsProfileOpen(!isProfileOpen)}
                 className="flex items-center gap-2 pl-1 pr-2 py-1 hover:bg-white/60 rounded-lg transition-all border border-transparent hover:border-white/50 group"
+                title="用户菜单"
               >
-                <div className="w-7 h-7 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-md flex items-center justify-center text-white font-black text-[10px] shadow-sm shadow-indigo-200/50 group-hover:scale-105 transition-transform">
-                  {user.username.substring(0, 2).toUpperCase()}
-                </div>
-                <div className="text-left hidden sm:block">
-                  <p className="text-xs font-black text-slate-800 leading-none">{user.username}</p>
+                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xs font-black shadow-sm">
+                  {user?.username?.charAt(0).toUpperCase() || 'U'}
                 </div>
                 <ChevronDown size={14} className={`text-slate-400 transition-transform duration-300 ${isProfileOpen ? 'rotate-180' : ''}`} />
               </button>
@@ -259,7 +342,7 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto custom-scrollbar pr-1">
           {renderContent()}
         </div>
       </main>

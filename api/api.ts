@@ -83,6 +83,9 @@ export const itemsApi = {
 
     getById: (id: number) =>
         fetchApi(`/items/detail/${id}`),
+
+    getCounts: () =>
+        fetchApi(`/items/stats/counts`),
 };
 
 // Health check

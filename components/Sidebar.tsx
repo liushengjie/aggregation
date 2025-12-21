@@ -1,7 +1,9 @@
-import React from 'react';
-import { LayoutDashboard, Settings, TrendingUp, Hash, Layers, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { LayoutDashboard, Settings, TrendingUp, Hash, Sparkles, Layers } from 'lucide-react';
 import { Platform } from '../types';
 import { PLATFORM_NAMES } from '../constants';
+import { itemsApi } from '../api/api';
+import PrismLogo from './PrismLogo';
 
 interface SidebarProps {
   activeView: string;
@@ -10,7 +12,40 @@ interface SidebarProps {
   setActivePlatform: (p: Platform | 'All') => void;
 }
 
+interface ItemCounts {
+  All: number;
+  Weibo: number;
+  Xiaohongshu: number;
+  Bilibili: number;
+}
+
 const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, activePlatform, setActivePlatform }) => {
+  const [itemCounts, setItemCounts] = useState<ItemCounts>({
+    All: 0,
+    Weibo: 0,
+    Xiaohongshu: 0,
+    Bilibili: 0,
+  });
+
+  // Load item counts
+  useEffect(() => {
+    const loadCounts = async () => {
+      try {
+        const data = await itemsApi.getCounts();
+        if (data.counts) {
+          setItemCounts(data.counts);
+        }
+      } catch (err) {
+        console.error('Error loading item counts:', err);
+      }
+    };
+
+    loadCounts();
+    // Refresh counts every 30 seconds
+    const interval = setInterval(loadCounts, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   const platforms: { id: Platform | 'All'; name: string; icon: React.ReactNode; color: string }[] = [
     { id: 'All', name: '全部平台', icon: <Layers size={16} />, color: 'text-slate-700' },
     { id: 'Weibo', name: PLATFORM_NAMES.Weibo, icon: <Hash size={16} />, color: 'text-red-500' },
@@ -24,13 +59,13 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, activePlat
       <div className="p-5 mb-1">
         <div className="flex items-center gap-3 group cursor-pointer">
           <div className="relative">
-            <div className="w-9 h-9 bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center text-white shadow-md shadow-indigo-200/50 transition-all duration-300 group-hover:scale-105">
-              <Layers size={20} strokeWidth={2.5} />
+            <div className="w-9 h-9 bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 rounded-lg flex items-center justify-center text-white shadow-md shadow-indigo-200/50 transition-all duration-300 group-hover:scale-105">
+              <PrismLogo size={20} />
             </div>
           </div>
           <div>
             <h1 className="text-base font-black text-slate-800 tracking-tight leading-none">
-              智汇聚合
+              棱镜聚合
             </h1>
             <div className="flex items-center gap-1.5 mt-1">
               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
@@ -91,9 +126,18 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, activePlat
                 <div className={`${activePlatform === p.id ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'}`}>
                   {p.icon}
                 </div>
-                <span className="text-sm">{p.name}</span>
+                <span className="text-sm flex-1">{p.name}</span>
+                {itemCounts[p.id as keyof ItemCounts] > 0 && (
+                  <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${
+                    activePlatform === p.id 
+                      ? 'bg-white/20 text-white' 
+                      : 'bg-slate-200/80 text-slate-600 group-hover:bg-slate-300/80'
+                  }`}>
+                    {itemCounts[p.id as keyof ItemCounts]}
+                  </span>
+                )}
                 {activePlatform === p.id && (
-                  <div className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.8)]"></div>
+                  <div className="ml-1 w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.8)]"></div>
                 )}
               </button>
             ))}

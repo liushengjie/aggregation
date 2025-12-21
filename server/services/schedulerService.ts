@@ -32,14 +32,20 @@ async function syncAllConnectedAccounts(): Promise<void> {
         console.log(`[Scheduler] Found ${accounts.length} connected accounts to sync`);
 
         for (const account of accounts) {
-            // Skip if already running
-            if (runningTasks.get(account.id)) {
-                console.log(`[Scheduler] Skipping ${account.platform} (already syncing)`);
+            // Double-check: status must be 'connected' and cookies must exist
+            if (account.status !== 'connected') {
+                console.log(`[Scheduler] Skipping ${account.platform} (status: ${account.status}, expected: connected)`);
                 continue;
             }
 
             if (!account.cookies) {
                 console.log(`[Scheduler] Skipping ${account.platform} (no cookies)`);
+                continue;
+            }
+
+            // Skip if already running
+            if (runningTasks.get(account.id)) {
+                console.log(`[Scheduler] Skipping ${account.platform} (already syncing)`);
                 continue;
             }
 

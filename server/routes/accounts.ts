@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth } from '../services/auth';
 import { accountOps } from '../services/database';
 import { startLoginSession, getLoginSession, getSessionScreenshot, submitCredentials } from '../services/loginService';
 
@@ -93,6 +93,9 @@ router.get('/:platform/login/status/:sessionId', requireAuth, async (req, res) =
             }
         }
 
+        // All platforms support password login based on current config
+        const supportsPassword = true;
+
         res.json({
             sessionId,
             platform,
@@ -101,6 +104,7 @@ router.get('/:platform/login/status/:sessionId', requireAuth, async (req, res) =
             error: session.error,
             screenshot: session.screenshot,
             screenshotVersion: session.screenshotVersion,
+            supportsPassword,
         });
     } catch (error) {
         console.error('Check login status error:', error);
@@ -199,7 +203,8 @@ router.delete('/:platform', requireAuth, (req, res) => {
         // Clear cookies and reset status instead of deleting
         const account = accountOps.findByUserAndPlatform.get(req.session.userId, platform) as any;
         if (account) {
-            accountOps.updateCookies.run(null, req.session.userId, platform);
+            // Use clearCookies to avoid setting status to 'connected'
+            accountOps.clearCookies.run(req.session.userId, platform);
             accountOps.updateStatus.run('disconnected', account.id);
         }
         res.json({ message: 'Account disconnected successfully' });

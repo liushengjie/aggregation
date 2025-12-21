@@ -1,6 +1,6 @@
 <div align="center">
 
-# 智汇聚合 (SocialStream Hub)
+# 棱镜聚合 (Prism Hub)
 
 **一个现代化的多平台社交内容聚合系统**
 

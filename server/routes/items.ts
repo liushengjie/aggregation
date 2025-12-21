@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth } from '../services/auth';
 import { itemOps } from '../services/database';
 
 const router = Router();
@@ -49,6 +49,7 @@ router.get('/:platform', requireAuth, (req, res) => {
         const offset = (page - 1) * limit;
 
         const items = itemOps.findByUserAndPlatform.all(req.session.userId, platform, limit, offset);
+        const countResult = itemOps.countByUserAndPlatform.get(req.session.userId, platform) as { count: number };
 
         // Parse tags from JSON string
         const parsedItems = (items as any[]).map(item => ({
@@ -56,7 +57,15 @@ router.get('/:platform', requireAuth, (req, res) => {
             tags: item.tags ? JSON.parse(item.tags) : [],
         }));
 
-        res.json({ items: parsedItems });
+        res.json({
+            items: parsedItems,
+            pagination: {
+                page,
+                limit,
+                total: countResult.count,
+                pages: Math.ceil(countResult.count / limit),
+            },
+        });
     } catch (error) {
         console.error('Get items by platform error:', error);
         res.status(500).json({ error: 'Failed to get items' });
@@ -80,6 +89,37 @@ router.get('/detail/:id', requireAuth, (req, res) => {
     } catch (error) {
         console.error('Get item error:', error);
         res.status(500).json({ error: 'Failed to get item' });
+    }
+});
+
+// Get item counts by platform
+router.get('/stats/counts', requireAuth, (req, res) => {
+    try {
+        // Get total count
+        const totalResult = itemOps.countByUser.get(req.session.userId) as { count: number };
+        const total = totalResult.count;
+
+        // Get counts by platform
+        const platformCounts = itemOps.countByPlatforms.all(req.session.userId) as Array<{ platform: string; count: number }>;
+        
+        // Convert to object format
+        const counts: Record<string, number> = {
+            All: total,
+            Weibo: 0,
+            Xiaohongshu: 0,
+            Bilibili: 0,
+        };
+
+        platformCounts.forEach(({ platform, count }) => {
+            if (counts.hasOwnProperty(platform)) {
+                counts[platform] = count;
+            }
+        });
+
+        res.json({ counts });
+    } catch (error) {
+        console.error('Get item counts error:', error);
+        res.status(500).json({ error: 'Failed to get item counts' });
     }
 });
 

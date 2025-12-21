@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { LogIn, UserPlus, Loader2, ShieldCheck, Sparkles, Zap, Layers, ArrowRight } from 'lucide-react';
+import { LogIn, UserPlus, Loader2, ShieldCheck, Sparkles, Zap, ArrowRight } from 'lucide-react';
+import PrismLogo from './PrismLogo';
 
 interface LoginFormProps {
     onSuccess?: () => void;
@@ -62,19 +63,19 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
                 <div className="ipad-glass rounded-xl p-8 shadow-2xl shadow-indigo-500/10 border border-white/60 relative overflow-hidden">
                     {/* Header */}
                     <div className="text-center mb-6">
-                        <div className="w-14 h-14 bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-indigo-500/30">
-                            <Layers size={28} className="text-white" strokeWidth={2.5} />
+                        <div className="w-14 h-14 bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-indigo-500/30">
+                            <PrismLogo size={32} />
                         </div>
-                        <h1 className="text-xl font-black text-slate-800 tracking-tight mb-1">智汇聚合</h1>
+                        <h1 className="text-xl font-black text-slate-800 tracking-tight mb-1">棱镜聚合</h1>
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                            {isLogin ? 'Welcome Back' : 'Join Platform'}
+                            {isLogin ? '欢迎回来' : '加入平台'}
                         </p>
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <div className="space-y-1.5">
                             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                Username
+                                用户名
                             </label>
                             <input
                                 type="text"
@@ -88,7 +89,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
 
                         <div className="space-y-1.5">
                             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                Password
+                                密码
                             </label>
                             <input
                                 type="password"
@@ -103,7 +104,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
                         {!isLogin && (
                             <div className="space-y-1.5 animate-in slide-in-from-top-2 duration-300">
                                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                    Confirm Password
+                                    确认密码
                                 </label>
                                 <input
                                     type="password"
@@ -132,7 +133,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
                                 <Loader2 className="animate-spin" size={18} />
                             ) : (
                                 <>
-                                    {isLogin ? 'Sign In' : 'Create Account'}
+                                    {isLogin ? '登录' : '创建账户'}
                                     <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
                                 </>
                             )}
@@ -148,13 +149,13 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
                             className="text-slate-500 hover:text-indigo-600 text-[10px] font-black uppercase tracking-widest transition-colors flex items-center justify-center gap-2 mx-auto group"
                         >
                             <Sparkles size={12} className="text-indigo-400 group-hover:rotate-12 transition-transform" />
-                            {isLogin ? 'Create new account' : 'Back to login'}
+                            {isLogin ? '创建新账户' : '返回登录'}
                         </button>
                     </div>
                 </div>
 
                 <p className="text-center mt-6 text-slate-400 text-[9px] font-bold uppercase tracking-[0.2em]">
-                    Secure & Encrypted Platform
+                    安全加密平台
                 </p>
             </div>
         </div>

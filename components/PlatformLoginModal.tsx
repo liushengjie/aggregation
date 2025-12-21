@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { accountsApi } from '../services/api';
+import { accountsApi } from '../api/api';
 import { PLATFORMS_CONFIG, PLATFORM_NAMES } from '../constants';
 import { Platform } from '../types';
-import { X, ExternalLink, Check, AlertCircle, Loader2, RefreshCw, Unplug, ShieldCheck, Info } from 'lucide-react';
+import { X, ExternalLink, Check, AlertCircle, Loader2, RefreshCw, Unplug, ShieldCheck, Info, QrCode, Lock } from 'lucide-react';
 
 interface PlatformAccount {
     id: number;
@@ -12,15 +12,31 @@ interface PlatformAccount {
     last_sync: string | null;
 }
 
+interface LoginDialogState {
+    platform: Platform;
+    sessionId: string;
+    screenshot: string | null;
+    screenshotVersion: number;
+    supportsPassword: boolean;
+}
+
 const PlatformLoginModal: React.FC = () => {
     const [accounts, setAccounts] = useState<PlatformAccount[]>([]);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const [error, setError] = useState('');
     const [loginStatus, setLoginStatus] = useState<string>('');
+    
+    // Login dialog state
+    const [loginDialog, setLoginDialog] = useState<LoginDialogState | null>(null);
+    const [showPasswordForm, setShowPasswordForm] = useState(false);
+    const [credentials, setCredentials] = useState({ username: '', password: '' });
+    const [submittingCredentials, setSubmittingCredentials] = useState(false);
 
     // Polling ref to keep track of active polls
     const pollRef = useRef<NodeJS.Timeout | null>(null);
+    const screenshotPollRef = useRef<NodeJS.Timeout | null>(null);
+    const loginDialogRef = useRef<LoginDialogState | null>(null);
 
     const platforms: Platform[] = ['Weibo', 'Bilibili', 'Xiaohongshu'];
 
@@ -39,6 +55,7 @@ const PlatformLoginModal: React.FC = () => {
         loadAccounts();
         return () => {
             if (pollRef.current) clearInterval(pollRef.current);
+            if (screenshotPollRef.current) clearInterval(screenshotPollRef.current);
         };
     }, []);
 
@@ -52,17 +69,62 @@ const PlatformLoginModal: React.FC = () => {
             try {
                 const statusData = await accountsApi.checkLoginStatus(platform, sessionId);
 
+                // Update screenshot if version changed
+                const currentDialog = loginDialogRef.current;
+                if (currentDialog && statusData.screenshotVersion !== undefined) {
+                    if (statusData.screenshotVersion !== currentDialog.screenshotVersion) {
+                        // Screenshot changed, update it
+                        try {
+                            const screenshotData = await accountsApi.getLoginScreenshot(platform, sessionId);
+                            setLoginDialog(prev => {
+                                const updated = prev ? {
+                                    ...prev,
+                                    screenshot: screenshotData.screenshot,
+                                    screenshotVersion: statusData.screenshotVersion || 0,
+                                    supportsPassword: statusData.supportsPassword ?? prev.supportsPassword,
+                                } : null;
+                                loginDialogRef.current = updated;
+                                return updated;
+                            });
+                        } catch (err) {
+                            console.error('Failed to fetch screenshot:', err);
+                        }
+                    }
+                }
+                
+                // Update supportsPassword if available
+                if (currentDialog && statusData.supportsPassword !== undefined && statusData.supportsPassword !== currentDialog.supportsPassword) {
+                    setLoginDialog(prev => {
+                        const updated = prev ? {
+                            ...prev,
+                            supportsPassword: statusData.supportsPassword,
+                        } : null;
+                        loginDialogRef.current = updated;
+                        return updated;
+                    });
+                }
+
                 if (statusData.status === 'success') {
                     if (pollRef.current) clearInterval(pollRef.current);
+                    if (screenshotPollRef.current) clearInterval(screenshotPollRef.current);
                     setLoginStatus('登录成功！正在同步...');
                     setActionLoading(null);
+                    setLoginDialog(null);
+                    loginDialogRef.current = null;
+                    setShowPasswordForm(false);
+                    setCredentials({ username: '', password: '' });
                     await loadAccounts();
                     setTimeout(() => setLoginStatus(''), 3000);
                 } else if (statusData.status === 'failed' || statusData.status === 'timeout') {
                     if (pollRef.current) clearInterval(pollRef.current);
+                    if (screenshotPollRef.current) clearInterval(screenshotPollRef.current);
                     setError(statusData.error || '登录失败');
                     setActionLoading(null);
                     setLoginStatus('');
+                    setLoginDialog(null);
+                    loginDialogRef.current = null;
+                    setShowPasswordForm(false);
+                    setCredentials({ username: '', password: '' });
                 } else {
                     setLoginStatus('等待登录完成...');
                 }
@@ -73,6 +135,49 @@ const PlatformLoginModal: React.FC = () => {
 
         // Poll every 2 seconds
         pollRef.current = setInterval(check, 2000);
+        check(); // Initial check
+    };
+
+    // Poll screenshot separately for more frequent updates
+    const pollScreenshot = (platform: Platform, sessionId: string) => {
+        const checkScreenshot = async () => {
+            if (!loginDialogRef.current) {
+                if (screenshotPollRef.current) {
+                    clearInterval(screenshotPollRef.current);
+                    screenshotPollRef.current = null;
+                }
+                return;
+            }
+            
+            try {
+                const screenshotData = await accountsApi.getLoginScreenshot(platform, sessionId);
+                if (screenshotData.screenshot) {
+                    setLoginDialog(prev => {
+                        const updated = prev ? {
+                            ...prev,
+                            screenshot: screenshotData.screenshot,
+                        } : null;
+                        loginDialogRef.current = updated;
+                        return updated;
+                    });
+                } else {
+                    // If screenshot is null and we had one before, browser might be closed
+                    // Continue polling in case it's just temporarily unavailable
+                }
+            } catch (err: any) {
+                // If error indicates browser closed, stop polling
+                if (err.message?.includes('not found') || err.message?.includes('expired')) {
+                    if (screenshotPollRef.current) {
+                        clearInterval(screenshotPollRef.current);
+                        screenshotPollRef.current = null;
+                    }
+                }
+                // Otherwise ignore screenshot fetch errors (might be temporary)
+            }
+        };
+
+        // Poll screenshot every 2 seconds
+        screenshotPollRef.current = setInterval(checkScreenshot, 2000);
     };
 
     const handleConnect = async (platform: Platform) => {
@@ -81,14 +186,40 @@ const PlatformLoginModal: React.FC = () => {
         setActionLoading(platform);
         setError('');
         setLoginStatus('正在启动登录窗口...');
+        setShowPasswordForm(false);
+        setCredentials({ username: '', password: '' });
 
         try {
             const data = await accountsApi.initiateLogin(platform);
 
             if (data.sessionId) {
-                setLoginStatus('请在新打开的浏览器窗口中登录...');
-                // Start polling
-                pollLoginStatus(platform, data.sessionId);
+                setLoginStatus('请扫码或输入密码登录...');
+                
+                // Wait a bit for initial screenshot to be ready
+                setTimeout(async () => {
+                    try {
+                        const screenshotData = await accountsApi.getLoginScreenshot(platform, data.sessionId);
+                        const statusData = await accountsApi.checkLoginStatus(platform, data.sessionId);
+                        
+                        const dialogState = {
+                            platform,
+                            sessionId: data.sessionId,
+                            screenshot: screenshotData.screenshot || null,
+                            screenshotVersion: statusData.screenshotVersion || 0,
+                            supportsPassword: statusData.supportsPassword ?? true,
+                        };
+                        setLoginDialog(dialogState);
+                        loginDialogRef.current = dialogState;
+                        
+                        // Start polling
+                        pollLoginStatus(platform, data.sessionId);
+                        pollScreenshot(platform, data.sessionId);
+                    } catch (err) {
+                        console.error('Failed to load initial screenshot:', err);
+                        // Still start polling even if screenshot fails
+                        pollLoginStatus(platform, data.sessionId);
+                    }
+                }, 3000);
             } else {
                 throw new Error('Failed to start login session');
             }
@@ -96,6 +227,40 @@ const PlatformLoginModal: React.FC = () => {
             setError(err.message);
             setActionLoading(null);
             setLoginStatus('');
+        }
+    };
+
+    const handleCloseLoginDialog = () => {
+        if (pollRef.current) clearInterval(pollRef.current);
+        if (screenshotPollRef.current) clearInterval(screenshotPollRef.current);
+        setLoginDialog(null);
+        loginDialogRef.current = null;
+        setShowPasswordForm(false);
+        setCredentials({ username: '', password: '' });
+        setActionLoading(null);
+        setLoginStatus('');
+    };
+
+    const handleSubmitCredentials = async () => {
+        if (!loginDialog || !credentials.username || !credentials.password) {
+            setError('请输入用户名和密码');
+            return;
+        }
+
+        setSubmittingCredentials(true);
+        setError('');
+
+        try {
+            await accountsApi.submitCredentials(
+                loginDialog.platform,
+                loginDialog.sessionId,
+                credentials.username,
+                credentials.password
+            );
+            setLoginStatus('正在验证登录信息...');
+        } catch (err: any) {
+            setError(err.message || '登录失败，请重试');
+            setSubmittingCredentials(false);
         }
     };
 
@@ -231,6 +396,139 @@ const PlatformLoginModal: React.FC = () => {
                 })}
             </div>
 
+            {/* Login Dialog */}
+            {loginDialog && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                        {/* Header */}
+                        <div className="flex items-center justify-between p-4 border-b border-slate-200">
+                            <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 ${PLATFORMS_CONFIG[loginDialog.platform].color} rounded-lg flex items-center justify-center`}>
+                                    {PLATFORMS_CONFIG[loginDialog.platform].icon('w-5 h-5 text-white')}
+                                </div>
+                                <div>
+                                    <h3 className="font-black text-sm text-slate-800">
+                                        {PLATFORM_NAMES[loginDialog.platform]} 登录
+                                    </h3>
+                                    <p className="text-xs text-slate-500">请扫码或输入密码完成登录</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleCloseLoginDialog}
+                                className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="p-6 space-y-4">
+                            {/* Screenshot */}
+                            {loginDialog.screenshot && (
+                                <div className="relative">
+                                    <div className="bg-slate-50 rounded-lg p-6 border-2 border-slate-200 flex items-center justify-center">
+                                        <img
+                                            src={loginDialog.screenshot}
+                                            alt="登录页面"
+                                            className="max-w-full h-auto rounded shadow-sm w-full"
+                                        />
+                                    </div>
+                                    <div className="mt-3 flex items-center justify-center gap-2 text-sm text-slate-500">
+                                        <QrCode size={16} />
+                                        <span>使用手机扫描二维码登录</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {!loginDialog.screenshot && (
+                                <div className="bg-slate-50 rounded-lg p-12 border-2 border-slate-200 flex flex-col items-center justify-center space-y-3 min-h-[400px]">
+                                    <Loader2 className="animate-spin text-indigo-600" size={40} />
+                                    <p className="text-base text-slate-500">正在加载登录页面...</p>
+                                </div>
+                            )}
+
+                            {/* Password Login Option */}
+                            {loginDialog.supportsPassword && (
+                                <div className="border-t border-slate-200 pt-4">
+                                    {!showPasswordForm ? (
+                                        <button
+                                            onClick={() => setShowPasswordForm(true)}
+                                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-indigo-600 hover:bg-indigo-50 rounded-lg border border-indigo-200 transition-all"
+                                        >
+                                            <Lock size={16} />
+                                            使用密码登录
+                                        </button>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                                                    用户名/手机号
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={credentials.username}
+                                                    onChange={(e) => setCredentials(prev => ({ ...prev, username: e.target.value }))}
+                                                    placeholder="请输入用户名或手机号"
+                                                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                                                    密码
+                                                </label>
+                                                <input
+                                                    type="password"
+                                                    value={credentials.password}
+                                                    onChange={(e) => setCredentials(prev => ({ ...prev, password: e.target.value }))}
+                                                    placeholder="请输入密码"
+                                                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                                />
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={handleSubmitCredentials}
+                                                    disabled={submittingCredentials || !credentials.username || !credentials.password}
+                                                    className="flex-1 px-4 py-2.5 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                                >
+                                                    {submittingCredentials ? (
+                                                        <>
+                                                            <Loader2 className="animate-spin" size={16} />
+                                                            登录中...
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Lock size={16} />
+                                                            登录
+                                                        </>
+                                                    )}
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        setShowPasswordForm(false);
+                                                        setCredentials({ username: '', password: '' });
+                                                    }}
+                                                    className="px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-300 transition-all"
+                                                >
+                                                    取消
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Status Message */}
+                            {loginStatus && (
+                                <div className="bg-indigo-50 border border-indigo-200 text-indigo-600 px-4 py-2.5 rounded-lg flex items-center gap-2 text-xs font-bold">
+                                    <Loader2 size={14} className="animate-spin" />
+                                    {loginStatus}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-lg p-6 text-white relative overflow-hidden shadow-xl shadow-indigo-500/20">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -mr-8 -mt-8 animate-pulse"></div>
                 <div className="relative z-10">
@@ -238,14 +536,14 @@ const PlatformLoginModal: React.FC = () => {
                         <div className="bg-white/20 p-1.5 rounded-md backdrop-blur-md border border-white/10">
                             <ShieldCheck size={16} className="text-white" />
                         </div>
-                        <h4 className="font-black text-sm tracking-tight">自动连接说明</h4>
+                        <h4 className="font-black text-sm tracking-tight">远程登录说明</h4>
                     </div>
                     <ul className="space-y-2">
                         {[
-                            '点击"连接"按钮，系统将自动打开浏览器窗口',
-                            '在弹出的窗口中完成登录，无需手动复制 Cookie',
+                            '点击"连接"按钮，系统将在服务器端打开登录页面',
+                            '在弹窗中查看二维码或使用密码登录',
                             '系统会自动检测登录状态并完成连接',
-                            '登录成功后窗口将自动关闭'
+                            '二维码过期会自动刷新，无需手动操作'
                         ].map((text, i) => (
                             <li key={i} className="flex items-start gap-2 text-xs font-medium text-indigo-100">
                                 <div className="w-4 h-4 bg-white/10 rounded-full flex items-center justify-center text-[9px] shrink-0 mt-0.5 font-mono border border-white/10">{i + 1}</div>

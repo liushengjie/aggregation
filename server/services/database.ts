@@ -104,6 +104,10 @@ export const accountOps = {
     WHERE user_id = ? AND platform = ?
   `),
 
+  clearCookies: db.prepare(`
+    UPDATE platform_accounts SET cookies = NULL WHERE user_id = ? AND platform = ?
+  `),
+
   updateStatus: db.prepare(`
     UPDATE platform_accounts SET status = ? WHERE id = ?
   `),
@@ -160,6 +164,19 @@ export const itemOps = {
     SELECT COUNT(*) as count FROM social_items si
     JOIN platform_accounts pa ON si.account_id = pa.id
     WHERE pa.user_id = ?
+  `),
+
+  countByUserAndPlatform: db.prepare(`
+    SELECT COUNT(*) as count FROM social_items si
+    JOIN platform_accounts pa ON si.account_id = pa.id
+    WHERE pa.user_id = ? AND si.platform = ?
+  `),
+
+  countByPlatforms: db.prepare(`
+    SELECT si.platform, COUNT(*) as count FROM social_items si
+    JOIN platform_accounts pa ON si.account_id = pa.id
+    WHERE pa.user_id = ?
+    GROUP BY si.platform
   `),
 
   clearAll: db.prepare(`DELETE FROM social_items`),
