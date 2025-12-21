@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Search, Bell, RefreshCw, User, LogOut, ChevronDown, LayoutGrid, Menu, Loader2 } from 'lucide-react';
+import { Search, Bell, RefreshCw, User, LogOut, ChevronDown, LayoutGrid, Menu, Loader2, Clock, Sparkles } from 'lucide-react';
 import Masonry from 'react-masonry-css';
 import { useAuth } from '../contexts/AuthContext';
 import { globalFocusApi, accountsApi } from '../api/api';
@@ -29,6 +29,7 @@ const GlobalFocusView: React.FC<GlobalFocusViewProps> = ({
     const [showLoadingIndicator, setShowLoadingIndicator] = useState(false);
     const [isAppending, setIsAppending] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
+    const [lastUpdated, setLastUpdated] = useState<string>(new Date().toLocaleTimeString());
 
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
@@ -94,11 +95,13 @@ const GlobalFocusView: React.FC<GlobalFocusViewProps> = ({
                         setShowLoadingIndicator(false);
                         setIsAppending(false);
                         setItemsLoading(false);
+                        setLastUpdated(new Date().toLocaleTimeString());
                     }, remainingDelay);
                 } else {
                     setItems(transformedItems);
                     setShowLoadingIndicator(false);
                     setIsAppending(false);
+                    setLastUpdated(new Date().toLocaleTimeString());
                 }
 
                 if (data.pagination) {
@@ -219,7 +222,7 @@ const GlobalFocusView: React.FC<GlobalFocusViewProps> = ({
 
     return (
         <div className="flex flex-col h-full overflow-hidden">
-            <header className="ipad-glass rounded-none lg:rounded-md mb-0 lg:mb-4 px-3 lg:px-4 py-2 lg:py-3 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 lg:gap-4 shrink-0 z-40 border-b lg:border border-white/60">
+            <header className="ipad-glass rounded-none lg:rounded-md mb-0 lg:mb-4 px-3 lg:px-4 py-2 lg:py-3 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 lg:gap-4 shrink-0 z-40 border-b lg:border border-white/60 glass-shimmer">
                 {/* Mobile: Top row */}
                 <div className="flex items-center justify-between w-full lg:hidden">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -277,9 +280,16 @@ const GlobalFocusView: React.FC<GlobalFocusViewProps> = ({
                             <h2 className="text-base font-black text-slate-800 tracking-tight leading-none whitespace-nowrap">
                                 {activePlatform === 'All' ? '全网聚焦' : `${PLATFORM_NAMES[activePlatform as Platform]} 精选`}
                             </h2>
-                            <p className="text-[10px] font-bold text-slate-500 mt-0.5 whitespace-nowrap">
-                                {`已同步 ${activePlatform === 'All' ? itemCounts.All : itemCounts[activePlatform as keyof typeof itemCounts]} 条内容`}
-                            </p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                                <p className="text-[10px] font-bold text-slate-500 whitespace-nowrap">
+                                    {`已同步 ${activePlatform === 'All' ? itemCounts.All : itemCounts[activePlatform as keyof typeof itemCounts]} 条内容`}
+                                </p>
+                                <div className="w-1 h-1 bg-slate-300 rounded-full"></div>
+                                <div className="flex items-center gap-1 text-[9px] font-black text-indigo-500 uppercase tracking-widest">
+                                    <Clock size={10} />
+                                    Last Update: {lastUpdated}
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div className="relative group max-w-xs w-full min-w-[200px]">
@@ -297,7 +307,7 @@ const GlobalFocusView: React.FC<GlobalFocusViewProps> = ({
                 {/* Desktop: Right */}
                 <div className="hidden lg:flex items-center gap-3 flex-shrink-0">
                     {syncingPlatforms.length > 0 && (
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 border border-indigo-200/50 rounded-md text-xs font-bold text-indigo-600 whitespace-nowrap animate-in fade-in slide-in-from-right duration-300">
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 border border-indigo-200/50 rounded-md text-xs font-bold text-indigo-600 whitespace-nowrap animate-in fade-in slide-in-from-right duration-300 pulse-glow">
                             <div className="flex items-center gap-0.5">
                                 <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
                                 <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
@@ -318,14 +328,14 @@ const GlobalFocusView: React.FC<GlobalFocusViewProps> = ({
             </header>
 
             <div ref={scrollContainerRef} className="flex-1 overflow-y-auto custom-scrollbar px-3 lg:px-0 lg:pr-1 pt-3 lg:pt-0">
-                <div className="space-y-4 animate-in fade-in duration-500">
+                <div className="space-y-4">
                     {itemsLoading && items.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-24 space-y-3 ipad-glass rounded-md border border-white/60">
                             <Loader2 className="animate-spin text-indigo-600" size={24} />
                             <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">加载中...</p>
                         </div>
                     ) : filteredItems.length === 0 ? (
-                        <div className="py-24 text-center ipad-glass rounded-md border border-white/60">
+                        <div className="py-24 text-center ipad-glass rounded-md border border-white/60 stagger-item">
                             <div className="w-12 h-12 bg-white/50 rounded-md flex items-center justify-center mx-auto mb-3 border border-white/50">
                                 <Search size={20} className="text-slate-400" />
                             </div>
@@ -342,8 +352,8 @@ const GlobalFocusView: React.FC<GlobalFocusViewProps> = ({
                                     className="masonry-grid"
                                     columnClassName="masonry-grid_column"
                                 >
-                                    {filteredItems.map(item => (
-                                        <ContentCard key={item.id} item={item} />
+                                    {filteredItems.map((item, idx) => (
+                                        <ContentCard key={item.id} item={item} index={idx} />
                                     ))}
                                 </Masonry>
                             </div>
@@ -353,7 +363,7 @@ const GlobalFocusView: React.FC<GlobalFocusViewProps> = ({
                                 </div>
                             )}
                             {!hasMore && items.length > 0 && (
-                                <div className="text-center py-8 text-slate-400 text-xs font-medium">
+                                <div className="text-center py-8 text-slate-400 text-xs font-medium stagger-item">
                                     已加载全部 {totalItems || items.length} 条消息
                                 </div>
                             )}

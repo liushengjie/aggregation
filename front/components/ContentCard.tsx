@@ -5,18 +5,19 @@ import { ExternalLink, Heart, MessageSquare, Eye, Play, MoreHorizontal, Share2, 
 
 // Get API base URL (same logic as api.ts)
 const getApiBase = () => {
-    if (typeof window !== 'undefined') {
-        // 浏览器环境
-        const hostname = window.location.hostname;
-        const port = hostname === 'localhost' || hostname === '127.0.0.1' ? '3351' : window.location.port || '3351';
-        return `${window.location.protocol}//${hostname}:${port}/api`;
-    }
-    // Node.js环境（开发时）
-    return 'http://localhost:3351/api';
+  if (typeof window !== 'undefined') {
+    // 浏览器环境
+    const hostname = window.location.hostname;
+    const port = hostname === 'localhost' || hostname === '127.0.0.1' ? '3351' : window.location.port || '3351';
+    return `${window.location.protocol}//${hostname}:${port}/api`;
+  }
+  // Node.js环境（开发时）
+  return 'http://localhost:3351/api';
 };
 
 interface ContentCardProps {
   item: SocialItem;
+  index?: number;
 }
 
 const formatNumber = (num: number) => {
@@ -24,17 +25,16 @@ const formatNumber = (num: number) => {
 };
 
 // --- Unified Card Component ---
-// All platforms now share a consistent structure for the Uniform Grid layout
-const UnifiedCard: React.FC<{ item: SocialItem }> = ({ item }) => {
+const UnifiedCard: React.FC<{ item: SocialItem; index?: number }> = ({ item, index = 0 }) => {
   const config = PLATFORMS_CONFIG[item.platform];
   const platformName = PLATFORM_NAMES[item.platform];
 
   // Platform badge gradient styles
-  const badgeStyles = item.platform === 'Weibo' 
-    ? 'bg-gradient-to-r from-[#ff8200] to-[#ff4500] shadow-red-200/50' 
-    : item.platform === 'Xiaohongshu' 
-    ? 'bg-gradient-to-r from-[#ff2442] to-[#e6162d] shadow-rose-200/50' 
-    : 'bg-gradient-to-r from-[#00aeec] to-[#007ec4] shadow-blue-200/50';
+  const badgeStyles = item.platform === 'Weibo'
+    ? 'bg-gradient-to-r from-[#ff8200] to-[#ff4500] shadow-red-200/50'
+    : item.platform === 'Xiaohongshu'
+      ? 'bg-gradient-to-r from-[#ff2442] to-[#e6162d] shadow-rose-200/50'
+      : 'bg-gradient-to-r from-[#00aeec] to-[#007ec4] shadow-blue-200/50';
 
   // Determine image source
   const imageSrc = item.thumbnail || '';
@@ -46,7 +46,7 @@ const UnifiedCard: React.FC<{ item: SocialItem }> = ({ item }) => {
   useEffect(() => {
     setImageLoaded(false);
     setImageError(false);
-    
+
     // Check if image is already loaded (from cache)
     if (imgRef.current && imgRef.current.complete && imgRef.current.naturalHeight !== 0) {
       setImageLoaded(true);
@@ -54,8 +54,14 @@ const UnifiedCard: React.FC<{ item: SocialItem }> = ({ item }) => {
   }, [imageSrc]);
 
   return (
-    <a href={item.url} target="_blank" rel="noopener noreferrer" className="block group">
-      <div className="ipad-glass rounded-md overflow-hidden transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 border border-white/60 flex flex-col bg-white/70">
+    <a
+      href={item.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="block group stagger-item"
+      style={{ animationDelay: `${(index % 20) * 50}ms` }}
+    >
+      <div className="ipad-glass rounded-md overflow-hidden transition-all duration-300 hover:shadow-xl border border-white/60 flex flex-col bg-white/70">
         {/* Image Area */}
         {imageSrc && !imageError ? (
           <div className="relative overflow-hidden bg-slate-100 m-1 rounded-md shrink-0">
@@ -63,26 +69,25 @@ const UnifiedCard: React.FC<{ item: SocialItem }> = ({ item }) => {
             {!imageLoaded && (
               <div className="absolute inset-0 w-full aspect-[4/3] bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 animate-pulse rounded-md" />
             )}
-            
+
             {/* Actual image - fades in when loaded, maintains natural aspect ratio */}
             <img
               ref={imgRef}
               src={`${getApiBase()}/image/proxy?url=${encodeURIComponent(imageSrc)}`}
               alt={item.title}
-              className={`w-full h-auto block rounded-md group-hover:scale-105 transition-transform duration-500 ${
-                imageLoaded ? 'opacity-100' : 'opacity-0'
-              } transition-opacity duration-200`}
+              className={`w-full h-auto block rounded-md group-hover:scale-105 transition-transform duration-500 ${imageLoaded ? 'opacity-100' : 'opacity-0'
+                } transition-opacity duration-200`}
               loading="lazy"
               onLoad={() => {
                 setImageLoaded(true);
               }}
-              onError={(e) => { 
+              onError={(e) => {
                 setImageError(true);
                 const target = e.target as HTMLImageElement;
                 target.style.display = 'none';
               }}
             />
-            
+
             {/* Hover overlay - only show when image is loaded */}
             {imageLoaded && (
               <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
@@ -94,13 +99,6 @@ const UnifiedCard: React.FC<{ item: SocialItem }> = ({ item }) => {
                 <span className="text-[9px] font-black tracking-wider uppercase leading-none relative top-[0.5px]">{platformName}</span>
               </div>
             </div>
-
-            {/* Bilibili Duration */}
-            {item.platform === 'Bilibili' && (
-              <div className="absolute bottom-1.5 right-1.5 bg-black/70 backdrop-blur-md text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md shadow-sm">
-                12:34
-              </div>
-            )}
           </div>
         ) : (
           /* Text-only Card Header */
@@ -149,14 +147,15 @@ const UnifiedCard: React.FC<{ item: SocialItem }> = ({ item }) => {
   );
 };
 
-const ContentCard: React.FC<ContentCardProps> = React.memo(({ item }) => {
-  return <UnifiedCard item={item} />;
+const ContentCard: React.FC<ContentCardProps> = React.memo(({ item, index }) => {
+  return <UnifiedCard item={item} index={index} />;
 }, (prevProps, nextProps) => {
   // Only re-render if item data actually changes
   return (
     prevProps.item.id === nextProps.item.id &&
     prevProps.item.thumbnail === nextProps.item.thumbnail &&
-    prevProps.item.title === nextProps.item.title
+    prevProps.item.title === nextProps.item.title &&
+    prevProps.index === nextProps.index
   );
 });
 

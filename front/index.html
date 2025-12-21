@@ -58,46 +58,128 @@
     /* Masonry grid layout */
     .masonry-grid {
       display: flex;
-      margin-left: -0.5rem; /* gutter size offset - smaller on mobile */
+      margin-left: -0.5rem;
+      /* gutter size offset - smaller on mobile */
       width: auto;
     }
-    
+
     @media (min-width: 1024px) {
       .masonry-grid {
         margin-left: -0.75rem;
       }
     }
-    
+
     .masonry-grid_column {
-      padding-left: 0.5rem; /* gutter size - 列之间的水平间距 - smaller on mobile */
+      padding-left: 0.5rem;
+      /* gutter size - 列之间的水平间距 - smaller on mobile */
       background-clip: padding-box;
     }
-    
+
     @media (min-width: 1024px) {
       .masonry-grid_column {
         padding-left: 0.75rem;
       }
     }
-    
+
     /* 卡片之间的垂直间距 */
-    .masonry-grid_column > * {
+    .masonry-grid_column>* {
       margin-bottom: 0.5rem;
     }
-    
+
     @media (min-width: 1024px) {
-      .masonry-grid_column > * {
+      .masonry-grid_column>* {
         margin-bottom: 0.75rem;
       }
     }
 
     .mesh-bg {
-      background-color: #f3f4f6;
+      background-color: #f8fafc;
       background-image:
-        radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
-        radial-gradient(at 100% 0%, rgba(244, 63, 94, 0.15) 0px, transparent 50%),
-        radial-gradient(at 100% 100%, rgba(168, 85, 247, 0.15) 0px, transparent 50%),
-        radial-gradient(at 0% 100%, rgba(59, 130, 246, 0.15) 0px, transparent 50%);
+        radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.1) 0px, transparent 50%),
+        radial-gradient(at 100% 0%, rgba(244, 63, 94, 0.1) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(168, 85, 247, 0.1) 0px, transparent 50%),
+        radial-gradient(at 0% 100%, rgba(59, 130, 246, 0.1) 0px, transparent 50%);
       background-attachment: fixed;
+      background-size: 200% 200%;
+      animation: mesh-flow 20s ease-in-out infinite alternate;
+    }
+
+    @keyframes mesh-flow {
+      0% {
+        background-position: 0% 0%;
+      }
+
+      100% {
+        background-position: 100% 100%;
+      }
+    }
+
+    /* Staggered Entrance Animation */
+    .stagger-item {
+      opacity: 0;
+      animation: slide-up-fade 0.5s ease forwards;
+    }
+
+    @keyframes slide-up-fade {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Pulse Glow for Live Indicators */
+    .pulse-glow {
+      animation: pulse-green 2s infinite;
+    }
+
+    @keyframes pulse-green {
+      0% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+      }
+
+      70% {
+        box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
+      }
+
+      100% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+      }
+    }
+
+    /* Glass Shimmer Effect */
+    .glass-shimmer {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .glass-shimmer::after {
+      content: "";
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: linear-gradient(45deg,
+          transparent,
+          rgba(255, 255, 255, 0.1),
+          transparent);
+      transform: rotate(45deg);
+      animation: shimmer 6s infinite;
+    }
+
+    @keyframes shimmer {
+      0% {
+        transform: translateX(-100%) rotate(45deg);
+      }
+
+      100% {
+        transform: translateX(100%) rotate(45deg);
+      }
     }
   </style>
 </head>
