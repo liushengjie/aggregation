@@ -140,19 +140,38 @@ export const itemOps = {
       fetched_at = datetime('now')
   `),
 
-  findByUser: db.prepare(`
-    SELECT si.* FROM social_items si
+  // Get user_id by account_id
+  getUserIdByAccountId: db.prepare(`
+    SELECT user_id FROM platform_accounts WHERE id = ?
+  `),
+
+  // Check if item exists by user_id, title, and platform
+  existsByUserTitlePlatform: db.prepare(`
+    SELECT si.id FROM social_items si
     JOIN platform_accounts pa ON si.account_id = pa.id
-    WHERE pa.user_id = ?
-    ORDER BY si.fetched_at DESC
+    WHERE pa.user_id = ? AND si.title = ? AND si.platform = ?
+    LIMIT 1
+  `),
+
+  findByUser: db.prepare(`
+    SELECT id, account_id, platform, external_id, title, author, thumbnail, url, content, likes, comments, shares, views, tags, fetched_at FROM (
+      SELECT si.*, ROW_NUMBER() OVER (PARTITION BY pa.user_id, si.title, si.platform ORDER BY si.fetched_at DESC, si.id DESC) as rn
+      FROM social_items si
+      JOIN platform_accounts pa ON si.account_id = pa.id
+      WHERE pa.user_id = ?
+    ) WHERE rn = 1
+    ORDER BY fetched_at DESC, id DESC
     LIMIT ? OFFSET ?
   `),
 
   findByUserAndPlatform: db.prepare(`
-    SELECT si.* FROM social_items si
-    JOIN platform_accounts pa ON si.account_id = pa.id
-    WHERE pa.user_id = ? AND si.platform = ?
-    ORDER BY si.fetched_at DESC
+    SELECT id, account_id, platform, external_id, title, author, thumbnail, url, content, likes, comments, shares, views, tags, fetched_at FROM (
+      SELECT si.*, ROW_NUMBER() OVER (PARTITION BY pa.user_id, si.title, si.platform ORDER BY si.fetched_at DESC, si.id DESC) as rn
+      FROM social_items si
+      JOIN platform_accounts pa ON si.account_id = pa.id
+      WHERE pa.user_id = ? AND si.platform = ?
+    ) WHERE rn = 1
+    ORDER BY fetched_at DESC, id DESC
     LIMIT ? OFFSET ?
   `),
 
@@ -161,25 +180,63 @@ export const itemOps = {
   `),
 
   countByUser: db.prepare(`
-    SELECT COUNT(*) as count FROM social_items si
+    SELECT COUNT(DISTINCT si.title || '|' || si.platform) as count FROM social_items si
     JOIN platform_accounts pa ON si.account_id = pa.id
     WHERE pa.user_id = ?
   `),
 
   countByUserAndPlatform: db.prepare(`
-    SELECT COUNT(*) as count FROM social_items si
+    SELECT COUNT(DISTINCT si.title) as count FROM social_items si
     JOIN platform_accounts pa ON si.account_id = pa.id
     WHERE pa.user_id = ? AND si.platform = ?
   `),
 
   countByPlatforms: db.prepare(`
-    SELECT si.platform, COUNT(*) as count FROM social_items si
+    SELECT si.platform, COUNT(DISTINCT si.title) as count FROM social_items si
     JOIN platform_accounts pa ON si.account_id = pa.id
     WHERE pa.user_id = ?
     GROUP BY si.platform
   `),
 
   clearAll: db.prepare(`DELETE FROM social_items`),
+
+  // Get distinct batch timestamps (using fetched_at as batch identifier) for a user and platform
+  // Group by date and hour to identify batches
+  getBatchCountByUserAndPlatform: db.prepare(`
+    SELECT COUNT(DISTINCT strftime('%Y-%m-%d %H:%M', si.fetched_at)) as batch_count
+    FROM social_items si
+    JOIN platform_accounts pa ON si.account_id = pa.id
+    WHERE pa.user_id = ? AND si.platform = ?
+  `),
+
+  // Get oldest batch timestamp for a user and platform
+  getOldestBatchTimestamp: db.prepare(`
+    SELECT MIN(strftime('%Y-%m-%d %H:%M', si.fetched_at)) as oldest_batch
+    FROM social_items si
+    JOIN platform_accounts pa ON si.account_id = pa.id
+    WHERE pa.user_id = ? AND si.platform = ?
+  `),
+
+  // Delete items from a specific batch (identified by fetched_at hour/minute)
+  deleteBatchByUserPlatformTimestamp: db.prepare(`
+    DELETE FROM social_items
+    WHERE account_id IN (
+      SELECT id FROM platform_accounts WHERE user_id = ? AND platform = ?
+    )
+    AND platform = ?
+    AND strftime('%Y-%m-%d %H:%M', fetched_at) = ?
+  `),
+
+  // Get batch timestamps ordered by time (newest first), limited to keep only the latest N batches
+  getBatchTimestampsToKeep: db.prepare(`
+    SELECT strftime('%Y-%m-%d %H:%M', si.fetched_at) as batch_time
+    FROM social_items si
+    JOIN platform_accounts pa ON si.account_id = pa.id
+    WHERE pa.user_id = ? AND si.platform = ?
+    GROUP BY strftime('%Y-%m-%d %H:%M', si.fetched_at)
+    ORDER BY MAX(si.fetched_at) DESC
+    LIMIT ?
+  `),
 };
 
 // Export initDatabase for compatibility (now just logs)

@@ -37,6 +37,7 @@ const PlatformLoginModal: React.FC = () => {
     const pollRef = useRef<NodeJS.Timeout | null>(null);
     const screenshotPollRef = useRef<NodeJS.Timeout | null>(null);
     const loginDialogRef = useRef<LoginDialogState | null>(null);
+    const syncTriggeredRef = useRef<Set<string>>(new Set()); // Track which platforms have already triggered sync
 
     const platforms: Platform[] = ['Weibo', 'Bilibili', 'Xiaohongshu'];
 
@@ -105,6 +106,16 @@ const PlatformLoginModal: React.FC = () => {
                 }
 
                 if (statusData.status === 'success') {
+                    // 防止重复触发同步
+                    const syncKey = `${platform}-${sessionId}`;
+                    if (syncTriggeredRef.current.has(syncKey)) {
+                        // 已经处理过这个登录成功事件，跳过
+                        return;
+                    }
+                    
+                    // 标记已处理
+                    syncTriggeredRef.current.add(syncKey);
+                    
                     if (pollRef.current) clearInterval(pollRef.current);
                     if (screenshotPollRef.current) clearInterval(screenshotPollRef.current);
                     setLoginStatus('登录成功！正在同步...');
@@ -113,7 +124,19 @@ const PlatformLoginModal: React.FC = () => {
                     loginDialogRef.current = null;
                     setShowPasswordForm(false);
                     setCredentials({ username: '', password: '' });
+                    
+                    // 重新加载账号列表以获取最新状态
                     await loadAccounts();
+                    
+                    // 自动触发一次同步（只执行一次）
+                    try {
+                        await accountsApi.sync(platform);
+                        console.log(`自动同步已启动: ${platform}`);
+                    } catch (syncErr: any) {
+                        console.error(`自动同步启动失败:`, syncErr);
+                        // 同步失败不影响登录成功的提示
+                    }
+                    
                     setTimeout(() => setLoginStatus(''), 3000);
                 } else if (statusData.status === 'failed' || statusData.status === 'timeout') {
                     if (pollRef.current) clearInterval(pollRef.current);
@@ -195,6 +218,9 @@ const PlatformLoginModal: React.FC = () => {
             if (data.sessionId) {
                 setLoginStatus('请扫码或输入密码登录...');
                 
+                // 清理之前的同步触发记录
+                syncTriggeredRef.current.delete(`${platform}-${data.sessionId}`);
+                
                 // Wait a bit for initial screenshot to be ready
                 setTimeout(async () => {
                     try {
@@ -233,6 +259,10 @@ const PlatformLoginModal: React.FC = () => {
     const handleCloseLoginDialog = () => {
         if (pollRef.current) clearInterval(pollRef.current);
         if (screenshotPollRef.current) clearInterval(screenshotPollRef.current);
+        // 清理同步触发记录
+        if (loginDialog?.platform && loginDialog?.sessionId) {
+            syncTriggeredRef.current.delete(`${loginDialog.platform}-${loginDialog.sessionId}`);
+        }
         setLoginDialog(null);
         loginDialogRef.current = null;
         setShowPasswordForm(false);
@@ -293,7 +323,7 @@ const PlatformLoginModal: React.FC = () => {
 
     if (loading) {
         return (
-            <div className="flex flex-col items-center justify-center py-16 space-y-3 bg-slate-50/50 rounded-lg border border-slate-200/50 border-dashed backdrop-blur-sm">
+            <div className="flex flex-col items-center justify-center py-16 space-y-3 bg-slate-50/50 rounded-md border border-slate-200/50 border-dashed backdrop-blur-sm">
                 <Loader2 className="animate-spin text-indigo-600" size={24} />
                 <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">Loading Accounts...</p>
             </div>
@@ -303,14 +333,14 @@ const PlatformLoginModal: React.FC = () => {
     return (
         <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-300">
             {error && (
-                <div className="bg-rose-50/80 backdrop-blur-sm border border-rose-200 text-rose-600 px-4 py-3 rounded-lg flex items-center gap-2 text-xs font-bold shadow-sm">
+                <div className="bg-rose-50/80 backdrop-blur-sm border border-rose-200 text-rose-600 px-4 py-3 rounded-md flex items-center gap-2 text-xs font-bold shadow-sm">
                     <AlertCircle size={16} />
                     {error}
                 </div>
             )}
 
             {loginStatus && (
-                <div className="bg-indigo-50/80 backdrop-blur-sm border border-indigo-200 text-indigo-600 px-4 py-3 rounded-lg flex items-center gap-2 text-xs font-bold shadow-sm animate-pulse">
+                <div className="bg-indigo-50/80 backdrop-blur-sm border border-indigo-200 text-indigo-600 px-4 py-3 rounded-md flex items-center gap-2 text-xs font-bold shadow-sm animate-pulse">
                     <Loader2 size={16} className="animate-spin" />
                     {loginStatus}
                 </div>
@@ -326,10 +356,10 @@ const PlatformLoginModal: React.FC = () => {
                     return (
                         <div
                             key={platform}
-                            className={`group relative bg-white/60 border border-slate-200/60 rounded-lg p-4 flex items-center justify-between transition-all duration-300 hover:border-indigo-300 hover:shadow-md hover:bg-white/80 backdrop-blur-sm ${status === 'connected' ? 'bg-slate-50/40' : ''}`}
+                            className={`group relative bg-white/60 border border-slate-200/60 rounded-md p-4 flex items-center justify-between transition-all duration-300 hover:border-indigo-300 hover:shadow-md hover:bg-white/80 backdrop-blur-sm ${status === 'connected' ? 'bg-slate-50/40' : ''}`}
                         >
                             <div className="flex items-center gap-4">
-                                <div className={`w-12 h-12 ${config.color} rounded-lg flex items-center justify-center shadow-lg shadow-indigo-100 group-hover:scale-105 transition-transform duration-300`}>
+                                <div className={`w-12 h-12 ${config.color} rounded-md flex items-center justify-center shadow-lg shadow-indigo-100 group-hover:scale-105 transition-transform duration-300`}>
                                     {config.icon('w-6 h-6 text-white')}
                                 </div>
                                 <div>
@@ -358,7 +388,7 @@ const PlatformLoginModal: React.FC = () => {
                                         <button
                                             onClick={() => handleSync(platform)}
                                             disabled={isLoading}
-                                            className="w-9 h-9 flex items-center justify-center text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg transition-all disabled:opacity-50 border border-transparent hover:border-indigo-100"
+                                            className="w-9 h-9 flex items-center justify-center text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 rounded-md transition-all disabled:opacity-50 border border-transparent hover:border-indigo-100"
                                             title="同步内容"
                                         >
                                             {isLoading ? (
@@ -370,7 +400,7 @@ const PlatformLoginModal: React.FC = () => {
                                         <button
                                             onClick={() => handleDisconnect(platform)}
                                             disabled={isLoading}
-                                            className="w-9 h-9 flex items-center justify-center text-slate-400 hover:bg-rose-50 hover:text-rose-500 rounded-lg transition-all disabled:opacity-50 border border-transparent hover:border-rose-100"
+                                            className="w-9 h-9 flex items-center justify-center text-slate-400 hover:bg-rose-50 hover:text-rose-500 rounded-md transition-all disabled:opacity-50 border border-transparent hover:border-rose-100"
                                             title="断开连接"
                                         >
                                             <Unplug size={16} />
@@ -380,7 +410,7 @@ const PlatformLoginModal: React.FC = () => {
                                     <button
                                         onClick={() => handleConnect(platform)}
                                         disabled={isLoading}
-                                        className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-black hover:bg-slate-800 transition-all flex items-center gap-2 disabled:opacity-50 shadow-lg shadow-slate-300/50 active:translate-y-0.5 hover:shadow-xl"
+                                        className="px-4 py-2 bg-slate-900 text-white rounded-md text-xs font-black hover:bg-slate-800 transition-all flex items-center gap-2 disabled:opacity-50 shadow-lg shadow-slate-300/50 active:translate-y-0.5 hover:shadow-xl"
                                     >
                                         {isLoading ? (
                                             <Loader2 className="animate-spin" size={14} />
@@ -399,11 +429,11 @@ const PlatformLoginModal: React.FC = () => {
             {/* Login Dialog */}
             {loginDialog && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                    <div className="bg-white rounded-md shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
                         {/* Header */}
                         <div className="flex items-center justify-between p-4 border-b border-slate-200">
                             <div className="flex items-center gap-3">
-                                <div className={`w-10 h-10 ${PLATFORMS_CONFIG[loginDialog.platform].color} rounded-lg flex items-center justify-center`}>
+                                <div className={`w-10 h-10 ${PLATFORMS_CONFIG[loginDialog.platform].color} rounded-md flex items-center justify-center`}>
                                     {PLATFORMS_CONFIG[loginDialog.platform].icon('w-5 h-5 text-white')}
                                 </div>
                                 <div>
@@ -415,7 +445,7 @@ const PlatformLoginModal: React.FC = () => {
                             </div>
                             <button
                                 onClick={handleCloseLoginDialog}
-                                className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all"
+                                className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md transition-all"
                             >
                                 <X size={18} />
                             </button>
@@ -426,7 +456,7 @@ const PlatformLoginModal: React.FC = () => {
                             {/* Screenshot */}
                             {loginDialog.screenshot && (
                                 <div className="relative">
-                                    <div className="bg-slate-50 rounded-lg p-6 border-2 border-slate-200 flex items-center justify-center">
+                                    <div className="bg-slate-50 rounded-md p-6 border-2 border-slate-200 flex items-center justify-center">
                                         <img
                                             src={loginDialog.screenshot}
                                             alt="登录页面"
@@ -441,7 +471,7 @@ const PlatformLoginModal: React.FC = () => {
                             )}
 
                             {!loginDialog.screenshot && (
-                                <div className="bg-slate-50 rounded-lg p-12 border-2 border-slate-200 flex flex-col items-center justify-center space-y-3 min-h-[400px]">
+                                <div className="bg-slate-50 rounded-md p-12 border-2 border-slate-200 flex flex-col items-center justify-center space-y-3 min-h-[400px]">
                                     <Loader2 className="animate-spin text-indigo-600" size={40} />
                                     <p className="text-base text-slate-500">正在加载登录页面...</p>
                                 </div>
@@ -453,7 +483,7 @@ const PlatformLoginModal: React.FC = () => {
                                     {!showPasswordForm ? (
                                         <button
                                             onClick={() => setShowPasswordForm(true)}
-                                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-indigo-600 hover:bg-indigo-50 rounded-lg border border-indigo-200 transition-all"
+                                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-indigo-600 hover:bg-indigo-50 rounded-md border border-indigo-200 transition-all"
                                         >
                                             <Lock size={16} />
                                             使用密码登录
@@ -469,7 +499,7 @@ const PlatformLoginModal: React.FC = () => {
                                                     value={credentials.username}
                                                     onChange={(e) => setCredentials(prev => ({ ...prev, username: e.target.value }))}
                                                     placeholder="请输入用户名或手机号"
-                                                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                                                 />
                                             </div>
                                             <div>
@@ -481,14 +511,14 @@ const PlatformLoginModal: React.FC = () => {
                                                     value={credentials.password}
                                                     onChange={(e) => setCredentials(prev => ({ ...prev, password: e.target.value }))}
                                                     placeholder="请输入密码"
-                                                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                                                 />
                                             </div>
                                             <div className="flex gap-2">
                                                 <button
                                                     onClick={handleSubmitCredentials}
                                                     disabled={submittingCredentials || !credentials.username || !credentials.password}
-                                                    className="flex-1 px-4 py-2.5 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                                    className="flex-1 px-4 py-2.5 bg-indigo-600 text-white text-sm font-bold rounded-md hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                                 >
                                                     {submittingCredentials ? (
                                                         <>
@@ -507,7 +537,7 @@ const PlatformLoginModal: React.FC = () => {
                                                         setShowPasswordForm(false);
                                                         setCredentials({ username: '', password: '' });
                                                     }}
-                                                    className="px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-300 transition-all"
+                                                    className="px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-md border border-slate-300 transition-all"
                                                 >
                                                     取消
                                                 </button>
@@ -519,7 +549,7 @@ const PlatformLoginModal: React.FC = () => {
 
                             {/* Status Message */}
                             {loginStatus && (
-                                <div className="bg-indigo-50 border border-indigo-200 text-indigo-600 px-4 py-2.5 rounded-lg flex items-center gap-2 text-xs font-bold">
+                                <div className="bg-indigo-50 border border-indigo-200 text-indigo-600 px-4 py-2.5 rounded-md flex items-center gap-2 text-xs font-bold">
                                     <Loader2 size={14} className="animate-spin" />
                                     {loginStatus}
                                 </div>
@@ -529,7 +559,7 @@ const PlatformLoginModal: React.FC = () => {
                 </div>
             )}
 
-            <div className="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-lg p-6 text-white relative overflow-hidden shadow-xl shadow-indigo-500/20">
+            <div className="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-md p-6 text-white relative overflow-hidden shadow-xl shadow-indigo-500/20">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -mr-8 -mt-8 animate-pulse"></div>
                 <div className="relative z-10">
                     <div className="flex items-center gap-2 mb-3">

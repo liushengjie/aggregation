@@ -60,10 +60,10 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
             </div>
 
             <div className="relative z-10 w-full max-w-[400px] px-6 animate-in fade-in zoom-in-95 duration-700">
-                <div className="ipad-glass rounded-xl p-8 shadow-2xl shadow-indigo-500/10 border border-white/60 relative overflow-hidden">
+                <div className="ipad-glass rounded-md p-8 shadow-2xl shadow-indigo-500/10 border border-white/60 relative overflow-hidden">
                     {/* Header */}
                     <div className="text-center mb-6">
-                        <div className="w-14 h-14 bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-indigo-500/30">
+                        <div className="w-14 h-14 bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 rounded-md flex items-center justify-center mx-auto mb-4 shadow-lg shadow-indigo-500/30">
                             <PrismLogo size={32} />
                         </div>
                         <h1 className="text-xl font-black text-slate-800 tracking-tight mb-1">棱镜聚合</h1>
@@ -81,7 +81,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
                                 type="text"
                                 value={username}
                                 onChange={(e) => setUsername(e.target.value)}
-                                className="w-full bg-white/50 border border-white/60 rounded-lg px-4 py-3 text-sm font-bold text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none backdrop-blur-sm"
+                                className="w-full bg-white/50 border border-white/60 rounded-md px-4 py-3 text-sm font-bold text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none backdrop-blur-sm"
                                 placeholder="输入用户名"
                                 disabled={loading}
                             />
@@ -95,7 +95,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
                                 type="password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                className="w-full bg-white/50 border border-white/60 rounded-lg px-4 py-3 text-sm font-bold text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none backdrop-blur-sm"
+                                className="w-full bg-white/50 border border-white/60 rounded-md px-4 py-3 text-sm font-bold text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none backdrop-blur-sm"
                                 placeholder="输入密码"
                                 disabled={loading}
                             />
@@ -110,7 +110,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
                                     type="password"
                                     value={confirmPassword}
                                     onChange={(e) => setConfirmPassword(e.target.value)}
-                                    className="w-full bg-white/50 border border-white/60 rounded-lg px-4 py-3 text-sm font-bold text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none backdrop-blur-sm"
+                                    className="w-full bg-white/50 border border-white/60 rounded-md px-4 py-3 text-sm font-bold text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none backdrop-blur-sm"
                                     placeholder="再次输入密码"
                                     disabled={loading}
                                 />
@@ -118,7 +118,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
                         )}
 
                         {error && (
-                            <div className="bg-rose-50/80 backdrop-blur-sm border border-rose-100 text-rose-600 px-4 py-3 rounded-lg text-xs font-bold flex items-center gap-2 animate-shake">
+                            <div className="bg-rose-50/80 backdrop-blur-sm border border-rose-100 text-rose-600 px-4 py-3 rounded-md text-xs font-bold flex items-center gap-2 animate-shake">
                                 <ShieldCheck size={16} />
                                 {error}
                             </div>
@@ -127,7 +127,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full bg-slate-900 hover:bg-indigo-600 text-white py-3.5 rounded-lg font-black text-xs uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 group shadow-xl shadow-slate-300/50 hover:shadow-indigo-500/30 active:scale-95"
+                            className="w-full bg-slate-900 hover:bg-indigo-600 text-white py-3.5 rounded-md font-black text-xs uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 group shadow-xl shadow-slate-300/50 hover:shadow-indigo-500/30 active:scale-95"
                         >
                             {loading ? (
                                 <Loader2 className="animate-spin" size={18} />

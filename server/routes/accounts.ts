@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { requireAuth } from '../services/auth';
 import { accountOps } from '../services/database';
 import { startLoginSession, getLoginSession, getSessionScreenshot, submitCredentials } from '../services/loginService';
+import { getSyncStatusForUser, setSyncRunning, clearSyncRunning } from '../services/schedulerService';
 
 const router = Router();
 
@@ -214,6 +215,17 @@ router.delete('/:platform', requireAuth, (req, res) => {
     }
 });
 
+// Get sync status
+router.get('/sync/status', requireAuth, (req, res) => {
+    try {
+        const syncingPlatforms = getSyncStatusForUser(req.session.userId);
+        res.json({ syncingPlatforms });
+    } catch (error) {
+        console.error('Get sync status error:', error);
+        res.status(500).json({ error: 'Failed to get sync status' });
+    }
+});
+
 // Trigger sync for a platform
 router.post('/:platform/sync', requireAuth, async (req, res) => {
     try {
@@ -233,8 +245,11 @@ router.post('/:platform/sync', requireAuth, async (req, res) => {
             return res.status(400).json({ error: 'Account not connected. Please login first.' });
         }
 
-        // Import and call sync service
+        // Import sync service
         const { syncPlatformContent } = await import('../services/syncService');
+
+        // Mark sync as running
+        setSyncRunning(account.id, platform as any);
 
         // Return immediately, sync runs in background
         res.json({ message: 'Sync started', platform, status: 'running' });
@@ -246,6 +261,9 @@ router.post('/:platform/sync', requireAuth, async (req, res) => {
             })
             .catch(err => {
                 console.error(`Sync failed for ${platform}:`, err);
+            })
+            .finally(() => {
+                clearSyncRunning(account.id);
             });
     } catch (error) {
         console.error('Sync error:', error);

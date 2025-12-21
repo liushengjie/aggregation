@@ -1,7 +1,19 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { SocialItem } from '../types';
 import { PLATFORMS_CONFIG, PLATFORM_NAMES } from '../constants';
 import { ExternalLink, Heart, MessageSquare, Eye, Play, MoreHorizontal, Share2, Bookmark, Image as ImageIcon } from 'lucide-react';
+
+// Get API base URL (same logic as api.ts)
+const getApiBase = () => {
+    if (typeof window !== 'undefined') {
+        // 浏览器环境
+        const hostname = window.location.hostname;
+        const port = hostname === 'localhost' || hostname === '127.0.0.1' ? '3351' : window.location.port || '3351';
+        return `${window.location.protocol}//${hostname}:${port}/api`;
+    }
+    // Node.js环境（开发时）
+    return 'http://localhost:3351/api';
+};
 
 interface ContentCardProps {
   item: SocialItem;
@@ -26,27 +38,55 @@ const UnifiedCard: React.FC<{ item: SocialItem }> = ({ item }) => {
 
   // Determine image source
   const imageSrc = item.thumbnail || '';
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const imgRef = React.useRef<HTMLImageElement>(null);
+
+  // Reset image loaded state when image source changes
+  useEffect(() => {
+    setImageLoaded(false);
+    setImageError(false);
+    
+    // Check if image is already loaded (from cache)
+    if (imgRef.current && imgRef.current.complete && imgRef.current.naturalHeight !== 0) {
+      setImageLoaded(true);
+    }
+  }, [imageSrc]);
 
   return (
-    <a href={item.url} target="_blank" rel="noopener noreferrer" className="block group break-inside-avoid mb-4">
-      <div className="ipad-glass rounded-lg overflow-hidden transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 border border-white/60 flex flex-col bg-white/70">
+    <a href={item.url} target="_blank" rel="noopener noreferrer" className="block group">
+      <div className="ipad-glass rounded-md overflow-hidden transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 border border-white/60 flex flex-col bg-white/70">
         {/* Image Area */}
-        {imageSrc ? (
+        {imageSrc && !imageError ? (
           <div className="relative overflow-hidden bg-slate-100 m-1 rounded-md shrink-0">
+            {/* Skeleton placeholder - shows while image is loading */}
+            {!imageLoaded && (
+              <div className="absolute inset-0 w-full aspect-[4/3] bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 animate-pulse rounded-md" />
+            )}
+            
+            {/* Actual image - fades in when loaded, maintains natural aspect ratio */}
             <img
-              src={`http://localhost:3001/api/image/proxy?url=${encodeURIComponent(imageSrc)}`}
+              ref={imgRef}
+              src={`${getApiBase()}/image/proxy?url=${encodeURIComponent(imageSrc)}`}
               alt={item.title}
-              className="w-full h-auto block group-hover:scale-105 transition-transform duration-500"
+              className={`w-full h-auto block rounded-md group-hover:scale-105 transition-transform duration-500 ${
+                imageLoaded ? 'opacity-100' : 'opacity-0'
+              } transition-opacity duration-200`}
               loading="lazy"
+              onLoad={() => {
+                setImageLoaded(true);
+              }}
               onError={(e) => { 
+                setImageError(true);
                 const target = e.target as HTMLImageElement;
                 target.style.display = 'none';
-                const container = target.closest('.relative.overflow-hidden');
-                if (container) (container as HTMLElement).style.display = 'none';
               }}
             />
             
-            <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
+            {/* Hover overlay - only show when image is loaded */}
+            {imageLoaded && (
+              <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
+            )}
 
             {/* Platform Label for Image Cards */}
             <div className="absolute top-2 left-2 z-10">
@@ -57,7 +97,7 @@ const UnifiedCard: React.FC<{ item: SocialItem }> = ({ item }) => {
 
             {/* Bilibili Duration */}
             {item.platform === 'Bilibili' && (
-              <div className="absolute bottom-1.5 right-1.5 bg-black/70 backdrop-blur-md text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm">
+              <div className="absolute bottom-1.5 right-1.5 bg-black/70 backdrop-blur-md text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md shadow-sm">
                 12:34
               </div>
             )}
@@ -109,8 +149,17 @@ const UnifiedCard: React.FC<{ item: SocialItem }> = ({ item }) => {
   );
 };
 
-const ContentCard: React.FC<ContentCardProps> = ({ item }) => {
+const ContentCard: React.FC<ContentCardProps> = React.memo(({ item }) => {
   return <UnifiedCard item={item} />;
-};
+}, (prevProps, nextProps) => {
+  // Only re-render if item data actually changes
+  return (
+    prevProps.item.id === nextProps.item.id &&
+    prevProps.item.thumbnail === nextProps.item.thumbnail &&
+    prevProps.item.title === nextProps.item.title
+  );
+});
+
+ContentCard.displayName = 'ContentCard';
 
 export default ContentCard;

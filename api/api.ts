@@ -1,4 +1,16 @@
-const API_BASE = 'http://localhost:3001/api';
+// API基础URL - 根据环境自动切换
+const getApiBase = () => {
+    if (typeof window !== 'undefined') {
+        // 浏览器环境
+        const hostname = window.location.hostname;
+        const port = hostname === 'localhost' || hostname === '127.0.0.1' ? '3351' : window.location.port || '3351';
+        return `${window.location.protocol}//${hostname}:${port}/api`;
+    }
+    // Node.js环境（开发时）
+    return 'http://localhost:3351/api';
+};
+
+const API_BASE = getApiBase();
 
 // Helper for making authenticated requests
 async function fetchApi(endpoint: string, options: RequestInit = {}) {
@@ -71,6 +83,9 @@ export const accountsApi = {
             method: 'POST',
             body: JSON.stringify({ username, password }),
         }),
+
+    getSyncStatus: () =>
+        fetchApi('/accounts/sync/status'),
 };
 
 // Items API

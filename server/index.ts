@@ -1,21 +1,28 @@
 import express from 'express';
 import cors from 'cors';
 import session from 'express-session';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { initDatabase } from './services/database.js';
 import authRouter from './routes/auth.js';
 import accountsRouter from './routes/accounts.js';
 import itemsRouter from './routes/items.js';
 import imageProxyRouter from './routes/imageProxy.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3351;
 
 // Initialize database
 initDatabase();
 
 // Middleware
+// CORS配置 - 允许前端端口访问
+const FRONTEND_PORT = process.env.FRONTEND_PORT || 3350;
 app.use(cors({
-    origin: 'http://localhost:3000',
+    origin: [`http://localhost:${FRONTEND_PORT}`, `http://182.92.92.43:${FRONTEND_PORT}`],
     credentials: true,
 }));
 app.use(express.json());
@@ -30,7 +37,7 @@ app.use(session({
     },
 }));
 
-// Routes
+// API Routes
 app.use('/api/auth', authRouter);
 app.use('/api/accounts', accountsRouter);
 app.use('/api/items', itemsRouter);
@@ -39,6 +46,22 @@ app.use('/api/image', imageProxyRouter);
 // Health check
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Serve static files from dist directory (frontend)
+const distPath = path.join(__dirname, '..', 'dist');
+app.use(express.static(distPath));
+
+// Serve frontend for all non-API routes (must be last)
+// Express 5.x doesn't support '*' wildcard, so we use a catch-all middleware
+// This will only be reached if express.static didn't find a matching file
+app.use((req, res) => {
+    // Don't serve index.html for API routes
+    if (req.path.startsWith('/api/')) {
+        return res.status(404).json({ error: 'Not found' });
+    }
+    // Serve index.html for SPA client-side routing
+    res.sendFile(path.join(distPath, 'index.html'));
 });
 
 // Error handling

@@ -55,6 +55,41 @@
       border: 1px solid rgba(255, 255, 255, 0.3);
     }
 
+    /* Masonry grid layout */
+    .masonry-grid {
+      display: flex;
+      margin-left: -0.5rem; /* gutter size offset - smaller on mobile */
+      width: auto;
+    }
+    
+    @media (min-width: 1024px) {
+      .masonry-grid {
+        margin-left: -0.75rem;
+      }
+    }
+    
+    .masonry-grid_column {
+      padding-left: 0.5rem; /* gutter size - 列之间的水平间距 - smaller on mobile */
+      background-clip: padding-box;
+    }
+    
+    @media (min-width: 1024px) {
+      .masonry-grid_column {
+        padding-left: 0.75rem;
+      }
+    }
+    
+    /* 卡片之间的垂直间距 */
+    .masonry-grid_column > * {
+      margin-bottom: 0.5rem;
+    }
+    
+    @media (min-width: 1024px) {
+      .masonry-grid_column > * {
+        margin-bottom: 0.75rem;
+      }
+    }
+
     .mesh-bg {
       background-color: #f3f4f6;
       background-image:

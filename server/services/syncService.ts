@@ -1,5 +1,6 @@
 import { chromium, Cookie, Page } from 'playwright';
 import { itemOps, accountOps } from './database';
+import db from './database';
 
 type Platform = 'Weibo' | 'Bilibili' | 'Xiaohongshu';
 
@@ -389,13 +390,53 @@ export async function syncPlatformContent(
 
     console.log(`Scraped ${items.length} items from ${platform}`);
 
-    // Save items to database
+    // Get user_id from account_id for deduplication
+    const userIdResult = itemOps.getUserIdByAccountId.get(accountId) as { user_id: number } | undefined;
+    const userId = userIdResult?.user_id;
+    
+    if (!userId) {
+      throw new Error('Cannot find user_id for account_id');
+    }
+
+    // Generate batch timestamp for this sync (use current time, rounded to minute for batch grouping)
+    // Format: YYYY-MM-DD HH:MM (SQLite datetime format, minutes precision)
+    const now = new Date();
+    now.setSeconds(0, 0); // Round to minute for batch grouping
+    const batchTimeStr = now.toISOString().slice(0, 16).replace('T', ' ') + ':00'; // Format: YYYY-MM-DD HH:MM:00
+
+    // Save items to database with deduplication by user_id, title, and platform
+    // Use transaction to ensure all items in this batch have the same fetched_at
+    const insertWithBatchTime = db.prepare(`
+      INSERT INTO social_items (account_id, platform, external_id, title, author, thumbnail, url, content, likes, comments, shares, views, tags, fetched_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(account_id, external_id) DO UPDATE SET
+        title = excluded.title,
+        author = excluded.author,
+        thumbnail = excluded.thumbnail,
+        url = excluded.url,
+        content = excluded.content,
+        likes = excluded.likes,
+        comments = excluded.comments,
+        shares = excluded.shares,
+        views = excluded.views,
+        tags = excluded.tags,
+        fetched_at = excluded.fetched_at
+    `);
+
     let savedCount = 0;
     for (const item of items) {
       if (!item.title || !item.externalId) continue;
 
       try {
-        itemOps.upsert.run(
+        // Check if item already exists by user_id, title, and platform
+        const existing = itemOps.existsByUserTitlePlatform.get(userId, item.title, platform);
+        if (existing) {
+          // Skip if duplicate exists
+          continue;
+        }
+
+        // Insert new item with batch timestamp
+        insertWithBatchTime.run(
           accountId,
           platform,
           item.externalId,
@@ -408,12 +449,51 @@ export async function syncPlatformContent(
           item.comments,
           item.shares,
           item.views,
-          JSON.stringify(item.tags)
+          JSON.stringify(item.tags),
+          batchTimeStr
         );
         savedCount++;
       } catch (err) {
         console.error('Error saving item:', err);
       }
+    }
+
+    // Clean up old batches - keep only the latest 20 batches for this user and platform
+    try {
+      // Get batch timestamps to keep (latest 20)
+      const batchTimestampsToKeep = itemOps.getBatchTimestampsToKeep.all(userId, platform, 20) as Array<{ batch_time: string }>;
+      const keepBatchTimes = new Set(batchTimestampsToKeep.map(b => b.batch_time));
+
+      // Get all batch timestamps for this user and platform
+      const getAllBatches = db.prepare(`
+        SELECT DISTINCT strftime('%Y-%m-%d %H:%M', si.fetched_at) as batch_time
+        FROM social_items si
+        JOIN platform_accounts pa ON si.account_id = pa.id
+        WHERE pa.user_id = ? AND si.platform = ?
+      `);
+      const allBatches = getAllBatches.all(userId, platform) as Array<{ batch_time: string }>;
+
+      // Delete batches that are not in the keep list
+      let deletedBatches = 0;
+      for (const batch of allBatches) {
+        if (!keepBatchTimes.has(batch.batch_time)) {
+          itemOps.deleteBatchByUserPlatformTimestamp.run(
+            userId,
+            platform,
+            platform,
+            batch.batch_time
+          );
+          deletedBatches++;
+          console.log(`Deleted old batch ${batch.batch_time} for user ${userId}, platform ${platform}`);
+        }
+      }
+
+      if (deletedBatches > 0) {
+        console.log(`Cleaned up ${deletedBatches} old batches for user ${userId}, platform ${platform}`);
+      }
+    } catch (err) {
+      console.error('Error cleaning up old batches:', err);
+      // Don't fail the sync if cleanup fails
     }
 
     // Update last sync time

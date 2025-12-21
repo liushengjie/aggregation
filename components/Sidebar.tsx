@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Settings, TrendingUp, Hash, Sparkles, Layers } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { LayoutDashboard, Settings, TrendingUp, Hash, Sparkles, Layers, X } from 'lucide-react';
 import { Platform } from '../types';
 import { PLATFORM_NAMES } from '../constants';
-import { itemsApi } from '../api/api';
+import { itemsApi, accountsApi } from '../api/api';
 import PrismLogo from './PrismLogo';
 
 interface SidebarProps {
@@ -10,6 +10,8 @@ interface SidebarProps {
   setActiveView: (view: string) => void;
   activePlatform: Platform | 'All';
   setActivePlatform: (p: Platform | 'All') => void;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 interface ItemCounts {
@@ -19,7 +21,7 @@ interface ItemCounts {
   Bilibili: number;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, activePlatform, setActivePlatform }) => {
+const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, activePlatform, setActivePlatform, isOpen = true, onClose }) => {
   const [itemCounts, setItemCounts] = useState<ItemCounts>({
     All: 0,
     Weibo: 0,
@@ -27,7 +29,9 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, activePlat
     Bilibili: 0,
   });
 
-  // Load item counts
+  // Load item counts and refresh when sync completes
+  const prevSyncingPlatformsRef = useRef<Platform[]>([]);
+  
   useEffect(() => {
     const loadCounts = async () => {
       try {
@@ -40,10 +44,40 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, activePlat
       }
     };
 
+    const checkSyncStatus = async () => {
+      try {
+        const syncData = await accountsApi.getSyncStatus();
+        const currentSyncing = syncData.syncingPlatforms || [];
+        const prevSyncing = prevSyncingPlatformsRef.current;
+        
+        // Check if sync just completed (was syncing, now not)
+        const wasSyncing = prevSyncing.length > 0;
+        const isSyncing = currentSyncing.length > 0;
+        const syncJustCompleted = wasSyncing && !isSyncing;
+        
+        prevSyncingPlatformsRef.current = currentSyncing;
+        
+        // If sync just completed, refresh item counts immediately
+        if (syncJustCompleted) {
+          await loadCounts();
+        }
+      } catch (err) {
+        console.error('Error checking sync status:', err);
+      }
+    };
+
     loadCounts();
-    // Refresh counts every 30 seconds
-    const interval = setInterval(loadCounts, 30000);
-    return () => clearInterval(interval);
+    checkSyncStatus();
+    
+    // Check sync status every 2 seconds (to detect completion quickly)
+    const syncInterval = setInterval(checkSyncStatus, 2000);
+    // Refresh counts every 30 seconds (as fallback)
+    const countsInterval = setInterval(loadCounts, 30000);
+    
+    return () => {
+      clearInterval(syncInterval);
+      clearInterval(countsInterval);
+    };
   }, []);
 
   const platforms: { id: Platform | 'All'; name: string; icon: React.ReactNode; color: string }[] = [
@@ -54,12 +88,32 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, activePlat
   ];
 
   return (
-    <aside className="w-60 h-[calc(100vh-24px)] fixed left-3 top-3 rounded-lg ipad-glass z-50 flex flex-col overflow-hidden transition-all duration-300 border border-white/60">
+    <>
+      {/* Mobile overlay */}
+      {isOpen && onClose && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={onClose}
+        />
+      )}
+      <aside className={`w-60 h-screen lg:h-[calc(100vh-24px)] fixed left-0 lg:left-3 top-0 lg:top-3 rounded-none lg:rounded-md ipad-glass z-50 flex flex-col overflow-hidden transition-transform duration-300 border-0 lg:border border-white/60
+        ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+      `}>
+        {/* Mobile close button */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="lg:hidden absolute top-4 right-4 p-2 text-slate-500 hover:bg-white/50 rounded-md transition-colors z-10"
+            aria-label="Close menu"
+          >
+            <X size={20} />
+          </button>
+        )}
       {/* Brand Section */}
       <div className="p-5 mb-1">
         <div className="flex items-center gap-3 group cursor-pointer">
           <div className="relative">
-            <div className="w-9 h-9 bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 rounded-lg flex items-center justify-center text-white shadow-md shadow-indigo-200/50 transition-all duration-300 group-hover:scale-105">
+            <div className="w-9 h-9 bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 rounded-md flex items-center justify-center text-white shadow-md shadow-indigo-200/50 transition-all duration-300 group-hover:scale-105">
               <PrismLogo size={20} />
             </div>
           </div>
@@ -86,23 +140,23 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, activePlat
           <div className="space-y-1">
             <button
               onClick={() => setActiveView('dashboard')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group relative ${activeView === 'dashboard'
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-200 group relative ${activeView === 'dashboard'
                 ? 'bg-slate-900 text-white font-bold shadow-md shadow-slate-300/50'
                 : 'text-slate-500 hover:bg-white/40 hover:text-slate-800 font-medium border border-transparent'
                 }`}
             >
               <LayoutDashboard size={18} className={activeView === 'dashboard' ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'} />
-              <span className="text-sm">聚合面板</span>
+              <span className="text-sm text-left">聚合面板</span>
             </button>
             <button
               onClick={() => setActiveView('insights')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group relative ${activeView === 'insights'
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-200 group relative ${activeView === 'insights'
                 ? 'bg-slate-900 text-white font-bold shadow-md shadow-slate-300/50'
                 : 'text-slate-500 hover:bg-white/40 hover:text-slate-800 font-medium border border-transparent'
                 }`}
             >
               <TrendingUp size={18} className={activeView === 'insights' ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'} />
-              <span className="text-sm">趋势洞察</span>
+              <span className="text-sm text-left">趋势洞察</span>
             </button>
           </div>
         </section>
@@ -118,7 +172,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, activePlat
                   setActivePlatform(p.id);
                   setActiveView('dashboard');
                 }}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group relative ${activePlatform === p.id
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-200 group relative ${activePlatform === p.id
                   ? 'bg-slate-900 text-white font-bold shadow-md shadow-slate-300/50'
                   : 'text-slate-500 hover:bg-white/40 hover:text-slate-800 font-medium border border-transparent'
                   }`}
@@ -126,18 +180,15 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, activePlat
                 <div className={`${activePlatform === p.id ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'}`}>
                   {p.icon}
                 </div>
-                <span className="text-sm flex-1">{p.name}</span>
+                <span className="text-sm flex-1 text-left">{p.name}</span>
                 {itemCounts[p.id as keyof ItemCounts] > 0 && (
-                  <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${
+                  <span className={`text-[10px] font-bold px-1 py-0.5 rounded-full ${
                     activePlatform === p.id 
                       ? 'bg-white/20 text-white' 
                       : 'bg-slate-200/80 text-slate-600 group-hover:bg-slate-300/80'
                   }`}>
                     {itemCounts[p.id as keyof ItemCounts]}
                   </span>
-                )}
-                {activePlatform === p.id && (
-                  <div className="ml-1 w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.8)]"></div>
                 )}
               </button>
             ))}
@@ -149,16 +200,17 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, activePlat
       <div className="p-3 mt-auto">
         <button
           onClick={() => setActiveView('settings')}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group ${activeView === 'settings'
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 group ${activeView === 'settings'
             ? 'bg-slate-800 text-white font-bold shadow-md shadow-slate-300/50'
             : 'bg-white/50 text-slate-500 hover:bg-white hover:text-slate-900 hover:shadow-sm font-medium border border-white/40'
             }`}
         >
           <Settings size={18} className={activeView === 'settings' ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'} />
-          <span className="text-sm">系统配置</span>
+          <span className="text-sm text-left">系统配置</span>
         </button>
       </div>
     </aside>
+    </>
   );
 };
 

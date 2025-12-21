@@ -12,7 +12,8 @@ interface ScheduledTask {
 }
 
 // Track running sync tasks to prevent overlapping
-const runningTasks = new Map<number, boolean>();
+// Map<accountId, platform>
+const runningTasks = new Map<number, Platform>();
 
 /**
  * Run sync for all connected accounts
@@ -44,13 +45,13 @@ async function syncAllConnectedAccounts(): Promise<void> {
             }
 
             // Skip if already running
-            if (runningTasks.get(account.id)) {
+            if (runningTasks.has(account.id)) {
                 console.log(`[Scheduler] Skipping ${account.platform} (already syncing)`);
                 continue;
             }
 
             // Mark as running
-            runningTasks.set(account.id, true);
+            runningTasks.set(account.id, account.platform as Platform);
 
             console.log(`[Scheduler] Starting sync for ${account.platform}...`);
 
@@ -69,7 +70,7 @@ async function syncAllConnectedAccounts(): Promise<void> {
             } catch (error: any) {
                 console.error(`[Scheduler] Error syncing ${account.platform}:`, error.message);
             } finally {
-                runningTasks.set(account.id, false);
+                runningTasks.delete(account.id);
             }
         }
 
@@ -121,4 +122,48 @@ export function stopScheduler(): void {
  */
 export async function triggerManualSync(): Promise<void> {
     await syncAllConnectedAccounts();
+}
+
+/**
+ * Get current sync status for all platforms
+ */
+export function getSyncStatus(): Map<Platform, boolean> {
+    const status = new Map<Platform, boolean>();
+    status.set('Weibo', false);
+    status.set('Bilibili', false);
+    status.set('Xiaohongshu', false);
+    
+    for (const platform of runningTasks.values()) {
+        status.set(platform, true);
+    }
+    
+    return status;
+}
+
+/**
+ * Set sync as running for an account
+ */
+export function setSyncRunning(accountId: number, platform: Platform): void {
+    runningTasks.set(accountId, platform);
+}
+
+/**
+ * Clear sync running status for an account
+ */
+export function clearSyncRunning(accountId: number): void {
+    runningTasks.delete(accountId);
+}
+
+/**
+ * Get sync status for a specific user's platforms
+ */
+export function getSyncStatusForUser(userId: number): Platform[] {
+    // This is a simplified version - in production you might want to track userId too
+    const syncingPlatforms: Platform[] = [];
+    for (const platform of runningTasks.values()) {
+        if (!syncingPlatforms.includes(platform)) {
+            syncingPlatforms.push(platform);
+        }
+    }
+    return syncingPlatforms;
 }

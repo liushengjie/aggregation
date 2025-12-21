@@ -6,7 +6,7 @@ const InsightsView: React.FC = () => {
     <div className="max-w-7xl mx-auto space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* Hero Section - Micro-Glass */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 bg-slate-900 rounded-lg p-6 text-white relative overflow-hidden shadow-xl shadow-indigo-900/20 group">
+        <div className="lg:col-span-2 bg-slate-900 rounded-md p-6 text-white relative overflow-hidden shadow-xl shadow-indigo-900/20 group">
           <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-600/30 rounded-full blur-[100px] -mr-20 -mt-20 animate-pulse"></div>
           <div className="relative z-10">
             <div className="flex items-center gap-2 mb-6">
@@ -25,7 +25,7 @@ const InsightsView: React.FC = () => {
             </p>
 
             <div className="flex items-center gap-4">
-              <button className="px-4 py-2 bg-white text-slate-900 text-[10px] font-black uppercase tracking-wider rounded-lg hover:bg-indigo-50 transition-colors flex items-center gap-2 shadow-lg shadow-white/10">
+              <button className="px-4 py-2 bg-white text-slate-900 text-[10px] font-black uppercase tracking-wider rounded-md hover:bg-indigo-50 transition-colors flex items-center gap-2 shadow-lg shadow-white/10">
                 Read Full Report <ArrowUpRight size={14} />
               </button>
               <div className="h-4 w-px bg-white/20"></div>
@@ -35,7 +35,7 @@ const InsightsView: React.FC = () => {
         </div>
 
         <div className="space-y-4">
-          <div className="ipad-glass p-5 rounded-lg h-[calc(50%-8px)] flex flex-col justify-center shadow-sm hover:shadow-md transition-shadow border border-white/60">
+          <div className="ipad-glass p-5 rounded-md h-[calc(50%-8px)] flex flex-col justify-center shadow-sm hover:shadow-md transition-shadow border border-white/60">
             <div className="flex items-center justify-between mb-3">
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Data Sources</span>
               <Globe size={18} className="text-slate-300" />
@@ -48,7 +48,7 @@ const InsightsView: React.FC = () => {
               ))}
             </div>
           </div>
-          <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-5 rounded-lg h-[calc(50%-8px)] flex flex-col justify-center text-white shadow-lg shadow-indigo-500/20 relative overflow-hidden group">
+          <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-5 rounded-md h-[calc(50%-8px)] flex flex-col justify-center text-white shadow-lg shadow-indigo-500/20 relative overflow-hidden group">
             <div className="absolute right-0 bottom-0 opacity-20 transform translate-x-4 translate-y-4 group-hover:scale-110 transition-transform duration-500">
               <Cpu size={70} />
             </div>
@@ -67,9 +67,9 @@ const InsightsView: React.FC = () => {
           { title: '爆红话题', icon: <Zap />, color: 'amber', desc: '#2024AI应用元年# 在各平台均有极高流量。' },
           { title: '推荐策略', icon: <TrendingUp />, color: 'emerald', desc: '算法今日倾向于向您推荐长视频及生活图文。' }
         ].map((item, i) => (
-          <div key={i} className="ipad-glass p-5 rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 group border border-white/60">
+          <div key={i} className="ipad-glass p-5 rounded-md shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 group border border-white/60">
             <div className="flex items-start gap-4">
-              <div className={`w-10 h-10 bg-${item.color}-50 text-${item.color}-600 rounded-lg flex items-center justify-center border border-${item.color}-100 shrink-0 shadow-sm group-hover:scale-110 transition-transform`}>
+              <div className={`w-10 h-10 bg-${item.color}-50 text-${item.color}-600 rounded-md flex items-center justify-center border border-${item.color}-100 shrink-0 shadow-sm group-hover:scale-110 transition-transform`}>
                 {React.cloneElement(item.icon as React.ReactElement, { size: 20 })}
               </div>
               <div>
@@ -84,9 +84,9 @@ const InsightsView: React.FC = () => {
       </div>
 
       {/* Core Summary - Glass Panel */}
-      <div className="ipad-glass rounded-lg p-6 shadow-sm relative overflow-hidden border border-white/60">
+      <div className="ipad-glass rounded-md p-6 shadow-sm relative overflow-hidden border border-white/60">
         <div className="flex items-center gap-3 mb-4 pb-4 border-b border-slate-200/50">
-          <div className="w-8 h-8 bg-slate-800 rounded-lg flex items-center justify-center text-white shadow-lg shadow-slate-300/50">
+          <div className="w-8 h-8 bg-slate-800 rounded-md flex items-center justify-center text-white shadow-lg shadow-slate-300/50">
             <BarChart3 size={16} />
           </div>
           <h3 className="text-lg font-black text-slate-800">核心摘要</h3>

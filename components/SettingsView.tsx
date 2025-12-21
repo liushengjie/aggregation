@@ -32,8 +32,8 @@ const SettingsView: React.FC = () => {
       case 'profile':
         return (
           <div className="space-y-5 animate-in fade-in slide-in-from-right-2 duration-300">
-            <div className="flex items-center gap-4 p-4 bg-slate-50/50 rounded-lg border border-slate-200/50 backdrop-blur-sm">
-              <div className="w-16 h-16 bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg flex items-center justify-center text-white text-xl font-black shadow-lg shadow-slate-300/50">
+            <div className="flex items-center gap-4 p-4 bg-slate-50/50 rounded-md border border-slate-200/50 backdrop-blur-sm">
+              <div className="w-16 h-16 bg-gradient-to-br from-slate-800 to-slate-900 rounded-md flex items-center justify-center text-white text-xl font-black shadow-lg shadow-slate-300/50">
                 {user?.username.substring(0, 2).toUpperCase()}
               </div>
               <div>
@@ -50,19 +50,19 @@ const SettingsView: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Display Name</label>
-                <input type="text" defaultValue={user?.username} className="w-full bg-white/50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-bold focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none backdrop-blur-sm" />
+                <input type="text" defaultValue={user?.username} className="w-full bg-white/50 border border-slate-200 rounded-md px-3 py-2.5 text-sm font-bold focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none backdrop-blur-sm" />
               </div>
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
-                <input type="email" defaultValue="user@example.com" className="w-full bg-white/50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-bold focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none backdrop-blur-sm" />
+                <input type="email" defaultValue="user@example.com" className="w-full bg-white/50 border border-slate-200 rounded-md px-3 py-2.5 text-sm font-bold focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none backdrop-blur-sm" />
               </div>
             </div>
           </div>
         );
       default:
         return (
-          <div className="flex flex-col items-center justify-center py-16 text-center space-y-3 animate-in fade-in duration-300 border border-dashed border-slate-300/50 rounded-lg bg-slate-50/30">
-            <div className="w-12 h-12 bg-white rounded-lg border border-slate-200 flex items-center justify-center shadow-sm">
+          <div className="flex flex-col items-center justify-center py-16 text-center space-y-3 animate-in fade-in duration-300 border border-dashed border-slate-300/50 rounded-md bg-slate-50/30">
+            <div className="w-12 h-12 bg-white rounded-md border border-slate-200 flex items-center justify-center shadow-sm">
               <AlertCircle size={20} className="text-slate-300" />
             </div>
             <div>
@@ -84,7 +84,7 @@ const SettingsView: React.FC = () => {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-all duration-200 group ${activeTab === tab.id
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-md transition-all duration-200 group ${activeTab === tab.id
                   ? 'bg-white text-indigo-600 font-bold shadow-md shadow-indigo-100'
                   : 'text-slate-500 hover:bg-white/60 hover:text-slate-800 font-medium'
                 }`}
@@ -102,7 +102,7 @@ const SettingsView: React.FC = () => {
           <div className="pt-4 mt-4 border-t border-slate-200/50">
             <button
               onClick={logout}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-rose-500 hover:bg-rose-50/50 transition-all font-bold text-sm"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-rose-500 hover:bg-rose-50/50 transition-all font-bold text-sm"
             >
               <LogOut size={16} />
               退出登录
@@ -111,7 +111,7 @@ const SettingsView: React.FC = () => {
         </div>
 
         {/* Main Content Area */}
-        <div className="flex-1 ipad-glass rounded-xl p-6 min-h-[500px] shadow-xl shadow-slate-200/50 border border-white/60">
+        <div className="flex-1 ipad-glass rounded-md p-6 min-h-[500px] shadow-xl shadow-slate-200/50 border border-white/60">
           <div className="mb-6 pb-4 border-b border-slate-200/50">
             <h3 className="text-xl font-black text-slate-800 tracking-tight">
               {tabs.find(t => t.id === activeTab)?.name}
@@ -130,8 +130,8 @@ const SettingsView: React.FC = () => {
           { icon: <Smartphone />, title: '多端同步', desc: '随时随地同步平台配置。' },
           { icon: <HelpCircle />, title: '获取帮助', desc: '查看文档或联系支持。' }
         ].map((item, i) => (
-          <div key={i} className="flex items-center gap-3 p-4 ipad-glass rounded-lg shadow-sm hover:shadow-md transition-all cursor-default border border-white/60">
-            <div className="w-8 h-8 bg-white/60 rounded-lg flex items-center justify-center text-slate-400 shrink-0 border border-white/50 shadow-sm">
+          <div key={i} className="flex items-center gap-3 p-4 ipad-glass rounded-md shadow-sm hover:shadow-md transition-all cursor-default border border-white/60">
+            <div className="w-8 h-8 bg-white/60 rounded-md flex items-center justify-center text-slate-400 shrink-0 border border-white/50 shadow-sm">
               {React.cloneElement(item.icon as React.ReactElement, { size: 16 })}
             </div>
             <div>

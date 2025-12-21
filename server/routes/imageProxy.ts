@@ -49,8 +49,6 @@ router.get('/proxy', async (req, res) => {
       return res.status(403).json({ error: 'Domain not allowed' });
     }
 
-    console.log(`[ImageProxy] Fetching image: ${imageUrl}`);
-
     // 获取图片，设置正确的 Referer 头
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
@@ -75,7 +73,6 @@ router.get('/proxy', async (req, res) => {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        console.error(`[ImageProxy] Failed to fetch image: ${response.status} ${response.statusText}`);
         res.setHeader('Content-Type', 'application/json');
         return res.status(response.status).json({ error: `Failed to fetch image: ${response.statusText}` });
       }
@@ -83,8 +80,6 @@ router.get('/proxy', async (req, res) => {
       const contentType = response.headers.get('content-type') || 'image/jpeg';
       const arrayBuffer = await response.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
-
-      console.log(`[ImageProxy] Successfully fetched image: ${buffer.length} bytes, Content-Type: ${contentType}`);
 
       // 设置响应头（必须在发送数据之前设置）
       res.setHeader('Content-Type', contentType);
@@ -98,14 +93,12 @@ router.get('/proxy', async (req, res) => {
     } catch (fetchError: any) {
       clearTimeout(timeoutId);
       if (fetchError.name === 'AbortError') {
-        console.error('[ImageProxy] Request timeout');
         res.setHeader('Content-Type', 'application/json');
         return res.status(504).json({ error: 'Request timeout' });
       }
       throw fetchError;
     }
   } catch (error: any) {
-    console.error('[ImageProxy] Error:', error);
     res.setHeader('Content-Type', 'application/json');
     res.status(500).json({ error: error.message || 'Internal server error' });
   }
