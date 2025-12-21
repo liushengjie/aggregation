@@ -1,6 +1,7 @@
 import React from 'react';
-import { LayoutDashboard, Settings, TrendingUp, Hash, Layers, Radio } from 'lucide-react';
+import { LayoutDashboard, Settings, TrendingUp, Hash, Layers, Sparkles } from 'lucide-react';
 import { Platform } from '../types';
+import { PLATFORM_NAMES } from '../constants';
 
 interface SidebarProps {
   activeView: string;
@@ -10,106 +11,107 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, activePlatform, setActivePlatform }) => {
-  const platforms: (Platform | 'All')[] = ['All', 'Weibo', 'Xiaohongshu', 'Bilibili'];
+  const platforms: { id: Platform | 'All'; name: string; icon: React.ReactNode; color: string }[] = [
+    { id: 'All', name: '全部平台', icon: <Layers size={16} />, color: 'text-slate-700' },
+    { id: 'Weibo', name: PLATFORM_NAMES.Weibo, icon: <Hash size={16} />, color: 'text-red-500' },
+    { id: 'Xiaohongshu', name: PLATFORM_NAMES.Xiaohongshu, icon: <Hash size={16} />, color: 'text-rose-500' },
+    { id: 'Bilibili', name: PLATFORM_NAMES.Bilibili, icon: <Hash size={16} />, color: 'text-blue-500' },
+  ];
 
   return (
-    <aside className="w-64 h-screen fixed left-0 top-0 bg-white/90 backdrop-blur-xl border-r border-gray-100 z-50 flex flex-col shadow-[4px_0_24px_-12px_rgba(0,0,0,0.05)]">
+    <aside className="w-60 h-[calc(100vh-24px)] fixed left-3 top-3 rounded-lg ipad-glass z-50 flex flex-col overflow-hidden transition-all duration-300 border border-white/60">
       {/* Brand Section */}
-      <div className="p-6 flex items-center gap-3.5 mb-2">
-        <div className="relative group cursor-pointer">
-          <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-violet-600 rounded flex items-center justify-center text-white shadow-lg shadow-indigo-200 transition-all duration-300 group-hover:shadow-indigo-300 group-hover:scale-105">
-            <Layers size={22} />
+      <div className="p-5 mb-1">
+        <div className="flex items-center gap-3 group cursor-pointer">
+          <div className="relative">
+            <div className="w-9 h-9 bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center text-white shadow-md shadow-indigo-200/50 transition-all duration-300 group-hover:scale-105">
+              <Layers size={20} strokeWidth={2.5} />
+            </div>
           </div>
-          <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-white rounded-full flex items-center justify-center">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+          <div>
+            <h1 className="text-base font-black text-slate-800 tracking-tight leading-none">
+              智汇聚合
+            </h1>
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                Micro Design
+              </span>
+            </div>
           </div>
-        </div>
-        <div>
-          <h1 className="text-lg font-extrabold text-gray-900 tracking-tight leading-none">
-            智汇聚合
-          </h1>
-          <p className="text-[10px] font-semibold text-indigo-500/80 mt-1 uppercase tracking-wider flex items-center gap-1">
-            <Radio size={8} /> 
-            全网实时监测
-          </p>
         </div>
       </div>
 
-      <nav className="flex-1 px-4 space-y-8 mt-2 overflow-y-auto custom-scrollbar">
+      <nav className="flex-1 px-3 space-y-6 overflow-y-auto custom-scrollbar">
         {/* Main Features */}
-        <div>
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 px-3">核心功能</p>
-          <div className="space-y-1.5">
+        <section>
+          <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-3 flex items-center gap-1.5">
+            <Sparkles size={10} className="text-indigo-400" />
+            核心功能
+          </h2>
+          <div className="space-y-1">
             <button
               onClick={() => setActiveView('dashboard')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded transition-all duration-200 group ${
-                activeView === 'dashboard' 
-                  ? 'bg-indigo-50 text-indigo-600 shadow-sm ring-1 ring-indigo-100 font-semibold' 
-                  : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 font-medium'
-              }`}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group relative ${activeView === 'dashboard'
+                ? 'bg-slate-900 text-white font-bold shadow-md shadow-slate-300/50'
+                : 'text-slate-500 hover:bg-white/40 hover:text-slate-800 font-medium border border-transparent'
+                }`}
             >
-              <LayoutDashboard size={19} className={activeView === 'dashboard' ? 'text-indigo-600' : 'text-gray-400 group-hover:text-gray-600'} />
-              <span>聚合面板</span>
+              <LayoutDashboard size={18} className={activeView === 'dashboard' ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'} />
+              <span className="text-sm">聚合面板</span>
             </button>
             <button
               onClick={() => setActiveView('insights')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded transition-all duration-200 group ${
-                activeView === 'insights' 
-                  ? 'bg-indigo-50 text-indigo-600 shadow-sm ring-1 ring-indigo-100 font-semibold' 
-                  : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 font-medium'
-              }`}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group relative ${activeView === 'insights'
+                ? 'bg-slate-900 text-white font-bold shadow-md shadow-slate-300/50'
+                : 'text-slate-500 hover:bg-white/40 hover:text-slate-800 font-medium border border-transparent'
+                }`}
             >
-              <TrendingUp size={19} className={activeView === 'insights' ? 'text-indigo-600' : 'text-gray-400 group-hover:text-gray-600'} />
-              <span>趋势洞察</span>
-              {activeView !== 'insights' && (
-                <span className="ml-auto text-[9px] font-bold bg-gradient-to-r from-pink-500 to-rose-500 text-white px-1.5 py-0.5 rounded-sm shadow-sm">
-                  AI
-                </span>
-              )}
+              <TrendingUp size={18} className={activeView === 'insights' ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'} />
+              <span className="text-sm">趋势洞察</span>
             </button>
           </div>
-        </div>
+        </section>
 
         {/* Content Sources */}
-        <div>
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 px-3">内容源</p>
-          <div className="space-y-1.5">
+        <section>
+          <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-3">内容源</h2>
+          <div className="space-y-1">
             {platforms.map((p) => (
               <button
-                key={p}
+                key={p.id}
                 onClick={() => {
-                  setActivePlatform(p);
+                  setActivePlatform(p.id);
                   setActiveView('dashboard');
                 }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded transition-all duration-200 group ${
-                  activePlatform === p 
-                    ? 'bg-gray-900 text-white shadow-lg shadow-gray-200 font-semibold' 
-                    : 'text-gray-500 hover:bg-white hover:shadow-sm hover:ring-1 hover:ring-gray-100 hover:text-gray-900 font-medium'
-                }`}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group relative ${activePlatform === p.id
+                  ? 'bg-slate-900 text-white font-bold shadow-md shadow-slate-300/50'
+                  : 'text-slate-500 hover:bg-white/40 hover:text-slate-800 font-medium border border-transparent'
+                  }`}
               >
-                <Hash size={18} className={activePlatform === p ? 'text-gray-400' : 'text-gray-400 group-hover:text-gray-600'} />
-                <span>{p === 'All' ? '全部平台' : p}</span>
-                {activePlatform === p && (
-                  <span className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.8)]"></span>
+                <div className={`${activePlatform === p.id ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'}`}>
+                  {p.icon}
+                </div>
+                <span className="text-sm">{p.name}</span>
+                {activePlatform === p.id && (
+                  <div className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.8)]"></div>
                 )}
               </button>
             ))}
           </div>
-        </div>
+        </section>
       </nav>
 
       {/* Footer / Settings */}
-      <div className="p-4 border-t border-gray-100/80 bg-gray-50/50">
+      <div className="p-3 mt-auto">
         <button
           onClick={() => setActiveView('settings')}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded transition-all duration-200 group ${
-            activeView === 'settings' 
-              ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-gray-100 font-semibold' 
-              : 'text-gray-500 hover:bg-white hover:text-gray-900 hover:shadow-sm font-medium'
-          }`}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group ${activeView === 'settings'
+            ? 'bg-slate-800 text-white font-bold shadow-md shadow-slate-300/50'
+            : 'bg-white/50 text-slate-500 hover:bg-white hover:text-slate-900 hover:shadow-sm font-medium border border-white/40'
+            }`}
         >
-          <Settings size={19} className={activeView === 'settings' ? 'text-indigo-600' : 'text-gray-400 group-hover:text-gray-600'} />
-          <span>系统配置</span>
+          <Settings size={18} className={activeView === 'settings' ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'} />
+          <span className="text-sm">系统配置</span>
         </button>
       </div>
     </aside>

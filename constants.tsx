@@ -1,57 +1,38 @@
-
-import React from 'react';
-// Added Platform to the import list
 import { SocialItem, AccountConfig, Platform } from './types';
+
+export const PLATFORM_NAMES: Record<Platform, string> = {
+  Weibo: '微博',
+  Xiaohongshu: '小红书',
+  Bilibili: '哔哩哔哩'
+};
 
 export const PLATFORMS_CONFIG = {
   Weibo: {
-    color: 'bg-red-500',
+    color: 'text-red-500', // Changed to text- for icon color usage
     icon: (className: string) => (
       <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-        <path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm3.84 13.91c-.48.77-1.43 1.14-2.5 1.14-2.18 0-4.32-1.39-4.32-3.13 0-1.11.83-2.16 2.21-2.16.48 0 .93.11 1.3.31.22.12.42.27.6.45.18-.18.38-.33.6-.45.37-.2.82-.31 1.3-.31 1.38 0 2.21 1.05 2.21 2.16 0 1.74-2.14 3.13-4.32 3.13-1.07 0-2.02-.37-2.5-1.14-.1-.16-.14-.35-.14-.54 0-.19.04-.38.14-.54.48-.77 1.43-1.14 2.5-1.14 2.18 0 4.32 1.39 4.32 3.13 0 .19-.04.38-.14.54-.48.77-1.43 1.14-2.5 1.14z"/>
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1.41 16.09c-2.38.63-4.69-.82-5.16-3.23-.47-2.41 1.06-4.82 3.44-5.45 2.38-.63 4.69.82 5.16 3.23.47 2.41-1.06 4.82-3.44 5.45zm3.12-6.5c-.92-.25-1.83.32-2.02 1.27-.19.95.41 1.9 1.33 2.15.92.25 1.83-.32 2.02-1.27.19-.95-.41-1.9-1.33-2.15z" />
       </svg>
     )
   },
   Xiaohongshu: {
-    color: 'bg-rose-600',
+    color: 'text-rose-600',
     icon: (className: string) => (
       <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-        <circle cx="12" cy="12" r="10" />
+        <path d="M20.5 2h-17A1.5 1.5 0 002 3.5v17A1.5 1.5 0 003.5 22h17a1.5 1.5 0 001.5-1.5v-17A1.5 1.5 0 0020.5 2zM12 18a2.5 2.5 0 110-5 2.5 2.5 0 010 5zm1-8h-2V7h2v3z" />
       </svg>
     )
   },
   Bilibili: {
-    color: 'bg-blue-400',
+    color: 'text-blue-400',
     icon: (className: string) => (
       <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-        <path d="M17.813 4.653h.854c1.51.054 2.769.578 3.773 1.574 1.004.995 1.524 2.249 1.56 3.76v7.36c-.036 1.51-.556 2.769-1.56 3.765-1.004.995-2.263 1.519-3.773 1.573H5.32c-1.51-.054-2.769-.578-3.773-1.573C.543 20.119.023 18.865 0 17.353v-7.36c.036-1.511.556-2.765 1.56-3.76C2.564 5.237 3.823 4.713 5.333 4.66h.854l-1.802-1.79a.639.639 0 0 1 0-.915.639.639 0 0 1 .914 0l2.469 2.453h8.464l2.469-2.453a.639.639 0 0 1 .914 0 .639.639 0 0 1 0 .915l-1.802 1.783zm-5.813 13.093c1.757 0 3.187-1.43 3.187-3.187 0-1.757-1.43-3.187-3.187-3.187-1.757 0-3.187 1.43-3.187 3.187 0 1.757 1.43 3.187 3.187 3.187z"/>
+        <path d="M18.7 5.8h-1.6c.4-.9.6-1.9.6-2.9 0-.6-.4-1-1-1-.6 0-1 .4-1 1 0 .6-.1 1.2-.4 1.7L13.8 3c-.4-.2-.8-.3-1.3-.3H11c-.5 0-.9.1-1.3.3L8.3 4.6c-.3-.5-.4-1.1-.4-1.7 0-.6-.4-1-1-1-.6 0-1 .4-1 1 0 1 .2 2 .6 2.9H4.8C2.1 5.8 0 8 0 10.6v7.3C0 20.5 2.1 22.7 4.8 22.7h13.9c2.7 0 4.8-2.2 4.8-4.8v-7.3c0-2.6-2.1-4.8-4.8-4.8zM8 16c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm8 0c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z" />
       </svg>
     )
   }
 };
 
-export const MOCK_ACCOUNTS: AccountConfig[] = [
-  { id: '1', platform: 'Weibo', username: 'TechNews_Daily', status: 'connected', lastSync: '10 mins ago' },
-  { id: '2', platform: 'Xiaohongshu', username: 'Lifestyle_Creator', status: 'connected', lastSync: '25 mins ago' },
-  { id: '3', platform: 'Bilibili', username: 'CodeMaster_Bili', status: 'error', lastSync: '2 hours ago' },
-];
+export const MOCK_ACCOUNTS: AccountConfig[] = [];
 
-export const MOCK_ITEMS: SocialItem[] = Array.from({ length: 30 }).map((_, i) => {
-  const platforms: Platform[] = ['Weibo', 'Xiaohongshu', 'Bilibili'];
-  const platform = platforms[i % 3];
-  return {
-    id: `item-${i}`,
-    platform,
-    title: i % 2 === 0 ? `今天的${platform}热门推荐：探索2024年最火的技术趋势与生活方式` : `${platform}独家深度解析：为什么这个话题突然爆红？`,
-    author: `创作者_${i + 100}`,
-    thumbnail: `https://picsum.photos/seed/${i + 400}/600/400`,
-    url: 'https://example.com',
-    timestamp: '2024-03-20 10:30',
-    stats: {
-      likes: Math.floor(Math.random() * 10000),
-      comments: Math.floor(Math.random() * 2000),
-      views: Math.floor(Math.random() * 50000),
-    },
-    tags: ['科技', '数码', '生活', '推荐'],
-  };
-});
+export const MOCK_ITEMS: SocialItem[] = [];

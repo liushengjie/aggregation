@@ -1,100 +1,110 @@
-import React, { useState, useEffect } from 'react';
-import { MOCK_ITEMS } from '../constants';
-import { generateDailyInsight } from '../services/geminiService';
-import { Sparkles, BrainCircuit, Zap, Loader2 } from 'lucide-react';
+import React from 'react';
+import { Sparkles, BrainCircuit, Zap, TrendingUp, BarChart3, Globe, Cpu, ArrowUpRight } from 'lucide-react';
 
 const InsightsView: React.FC = () => {
-  const [insight, setInsight] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const fetchInsight = async () => {
-    setLoading(true);
-    const result = await generateDailyInsight(MOCK_ITEMS.slice(0, 15));
-    setInsight(result || "暂无分析数据");
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    fetchInsight();
-  }, []);
-
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
-      <div className="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-lg p-8 text-white shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-40 h-40 bg-white/10 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-64 h-64 bg-indigo-400/20 rounded-full blur-3xl"></div>
-        
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="bg-white/20 p-2 rounded backdrop-blur-md">
-              <Sparkles size={24} className="text-amber-300" />
+    <div className="max-w-7xl mx-auto space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Hero Section - Micro-Glass */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 bg-slate-900 rounded-lg p-6 text-white relative overflow-hidden shadow-xl shadow-indigo-900/20 group">
+          <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-600/30 rounded-full blur-[100px] -mr-20 -mt-20 animate-pulse"></div>
+          <div className="relative z-10">
+            <div className="flex items-center gap-2 mb-6">
+              <div className="bg-white/10 p-1.5 rounded-md backdrop-blur-md border border-white/10">
+                <Sparkles size={16} className="text-indigo-300" />
+              </div>
+              <span className="text-indigo-200 text-[10px] font-black uppercase tracking-widest">AI Analysis Daily</span>
             </div>
-            <h2 className="text-2xl font-bold uppercase tracking-tight">AI 智能日报</h2>
-          </div>
-          
-          <h3 className="text-4xl font-extrabold mb-4 leading-tight">
-            今日全网 <span className="text-amber-300 italic">核心趋势</span> 洞察
-          </h3>
-          
-          <p className="text-indigo-100 max-w-2xl text-lg leading-relaxed">
-            我们利用 Gemini AI 分析了来自微博、小红书和 Bilibili 的 300+ 条实时推荐信息，为您提取出最具价值的信息增量。
-          </p>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-md border border-gray-100 shadow-sm">
-          <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded flex items-center justify-center mb-4">
-            <BrainCircuit size={20} />
-          </div>
-          <h4 className="font-bold text-gray-900 mb-2">主流情绪</h4>
-          <p className="text-sm text-gray-500 leading-relaxed">
-            今日全网内容偏向“积极生活”与“效率提升”，科技数码产品发布带来的热度持续走高。
-          </p>
-        </div>
-        <div className="bg-white p-6 rounded-md border border-gray-100 shadow-sm">
-          <div className="w-10 h-10 bg-amber-50 text-amber-600 rounded flex items-center justify-center mb-4">
-            <Zap size={20} />
-          </div>
-          <h4 className="font-bold text-gray-900 mb-2">爆红话题</h4>
-          <p className="text-sm text-gray-500 leading-relaxed">
-            #2024AI应用元年# 以及 #春季数码好物清单# 在各平台均有极高的流量权重。
-          </p>
-        </div>
-        <div className="bg-white p-6 rounded-md border border-gray-100 shadow-sm">
-          <div className="w-10 h-10 bg-green-50 text-green-600 rounded flex items-center justify-center mb-4">
-            <Sparkles size={20} />
-          </div>
-          <h4 className="font-bold text-gray-900 mb-2">推荐策略</h4>
-          <p className="text-sm text-gray-500 leading-relaxed">
-            算法今日倾向于向您推荐长视频（B站）及生活图文（小红书），微博侧重时事。
-          </p>
-        </div>
-      </div>
+            <h3 className="text-3xl font-black mb-4 leading-tight tracking-tight">
+              今日全网 <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-rose-400">核心趋势</span> 洞察
+            </h3>
 
-      <div className="bg-white rounded-lg p-8 border border-gray-100 shadow-lg min-h-[300px] flex flex-col items-center justify-center text-center">
-        {loading ? (
-          <div className="flex flex-col items-center gap-4 text-indigo-600">
-            <Loader2 size={40} className="animate-spin" />
-            <p className="font-medium animate-pulse">Gemini 正在深度阅读全网热门内容...</p>
-          </div>
-        ) : (
-          <div className="w-full text-left">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                <BrainCircuit className="text-indigo-600" /> AI 详细摘要
-              </h3>
-              <button onClick={fetchInsight} className="text-sm text-indigo-600 hover:underline font-medium">
-                重新生成
+            <p className="text-slate-300 text-sm font-medium leading-relaxed max-w-xl mb-6">
+              实时汇总来自微博、小红书和哔哩哔哩的热门推荐信息，通过 AI 深度学习算法为您提取出最具价值的信息增量。
+            </p>
+
+            <div className="flex items-center gap-4">
+              <button className="px-4 py-2 bg-white text-slate-900 text-[10px] font-black uppercase tracking-wider rounded-lg hover:bg-indigo-50 transition-colors flex items-center gap-2 shadow-lg shadow-white/10">
+                Read Full Report <ArrowUpRight size={14} />
               </button>
+              <div className="h-4 w-px bg-white/20"></div>
+              <p className="text-slate-400 text-[10px] font-bold">Updated 2m ago</p>
             </div>
-            <div className="prose prose-indigo max-w-none">
-              <div className="whitespace-pre-wrap text-gray-700 leading-loose text-lg font-light">
-                {insight}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="ipad-glass p-5 rounded-lg h-[calc(50%-8px)] flex flex-col justify-center shadow-sm hover:shadow-md transition-shadow border border-white/60">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Data Sources</span>
+              <Globe size={18} className="text-slate-300" />
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {['Weibo', 'RED', 'Bilibili'].map(p => (
+                <span key={p} className="px-2.5 py-1 bg-white/60 text-slate-600 text-[10px] font-bold rounded-md border border-white/50 backdrop-blur-sm">
+                  {p}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-5 rounded-lg h-[calc(50%-8px)] flex flex-col justify-center text-white shadow-lg shadow-indigo-500/20 relative overflow-hidden group">
+            <div className="absolute right-0 bottom-0 opacity-20 transform translate-x-4 translate-y-4 group-hover:scale-110 transition-transform duration-500">
+              <Cpu size={70} />
+            </div>
+            <div className="relative z-10">
+              <p className="text-3xl font-black mb-1 tracking-tight">98.4%</p>
+              <p className="text-white/70 text-[10px] font-bold uppercase tracking-widest">AI Accuracy Score</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Metrics Grid - Glass Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[
+          { title: '主流情绪', icon: <BrainCircuit />, color: 'blue', desc: '今日全网内容偏向“积极生活”与“效率提升”。' },
+          { title: '爆红话题', icon: <Zap />, color: 'amber', desc: '#2024AI应用元年# 在各平台均有极高流量。' },
+          { title: '推荐策略', icon: <TrendingUp />, color: 'emerald', desc: '算法今日倾向于向您推荐长视频及生活图文。' }
+        ].map((item, i) => (
+          <div key={i} className="ipad-glass p-5 rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 group border border-white/60">
+            <div className="flex items-start gap-4">
+              <div className={`w-10 h-10 bg-${item.color}-50 text-${item.color}-600 rounded-lg flex items-center justify-center border border-${item.color}-100 shrink-0 shadow-sm group-hover:scale-110 transition-transform`}>
+                {React.cloneElement(item.icon as React.ReactElement, { size: 20 })}
+              </div>
+              <div>
+                <h4 className="text-sm font-black text-slate-800 mb-1.5">{item.title}</h4>
+                <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                  {item.desc}
+                </p>
               </div>
             </div>
           </div>
-        )}
+        ))}
+      </div>
+
+      {/* Core Summary - Glass Panel */}
+      <div className="ipad-glass rounded-lg p-6 shadow-sm relative overflow-hidden border border-white/60">
+        <div className="flex items-center gap-3 mb-4 pb-4 border-b border-slate-200/50">
+          <div className="w-8 h-8 bg-slate-800 rounded-lg flex items-center justify-center text-white shadow-lg shadow-slate-300/50">
+            <BarChart3 size={16} />
+          </div>
+          <h3 className="text-lg font-black text-slate-800">核心摘要</h3>
+        </div>
+
+        <div className="prose prose-slate max-w-none mb-4">
+          <p className="text-sm text-slate-700 leading-loose font-medium">
+            根据今日全网热点分析，社交媒体呈现出明显的<span className="bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded-md font-bold mx-1 border border-indigo-100">“生活方式升级”</span>趋势。用户对高质量内容的付费意愿增强，同时短视频平台的算法正向着更加垂直化和专业化的方向演进。科技数码类内容在 B 站获得显著增长，而小红书的生活美学类笔记互动率提升了 15%。
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {['#AI革命', '#生活美学', '#数码趋势', '#算法演进'].map(tag => (
+            <span key={tag} className="px-2.5 py-1 bg-white/50 text-slate-600 text-[10px] font-bold rounded-md border border-white/60 hover:bg-white hover:shadow-sm cursor-pointer transition-all">
+              {tag}
+            </span>
+          ))}
+        </div>
       </div>
     </div>
   );
