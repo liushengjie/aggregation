@@ -348,7 +348,7 @@ const GlobalFocusView: React.FC<GlobalFocusViewProps> = ({
                                             : 'bg-white/50 text-slate-600 hover:bg-white/80'
                                             } ${!user ? 'opacity-50' : ''}`}
                                     >
-                                        我喜爱的
+                                        我的平台
                                     </button>
                                 </div>
                             </div>
@@ -432,7 +432,7 @@ const GlobalFocusView: React.FC<GlobalFocusViewProps> = ({
                                         : 'bg-white/50 text-slate-600 hover:bg-white/80'
                                         } ${!user ? 'opacity-50' : ''}`}
                                 >
-                                    我喜爱的
+                                    我的平台
                                 </button>
                             </div>
                         </div>

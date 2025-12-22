@@ -135,17 +135,40 @@ export async function scrapeAllPlatforms(): Promise<void> {
     console.log('[HotTrendScheduler] All platform scrapes completed');
 }
 
-// Scheduler interval
-const SCRAPE_INTERVAL = 60 * 60 * 1000; // 10 minutes
+// Scheduler interval (default: 60 minutes)
+let SCRAPE_INTERVAL = 60 * 60 * 1000; // 60 minutes
 let schedulerInterval: NodeJS.Timeout | null = null;
+
+/**
+ * Set the scheduler interval (in minutes)
+ */
+export function setHotTrendSchedulerInterval(intervalMinutes: number): void {
+    SCRAPE_INTERVAL = intervalMinutes * 60 * 1000;
+    // Restart scheduler if running
+    if (schedulerInterval) {
+        stopHotTrendScheduler();
+        startHotTrendScheduler();
+    }
+}
+
+/**
+ * Get the current scheduler interval (in minutes)
+ */
+export function getHotTrendSchedulerInterval(): number {
+    return SCRAPE_INTERVAL / 1000 / 60;
+}
 
 /**
  * Start the hot trend scheduler
  */
-export function startHotTrendScheduler(): void {
+export function startHotTrendScheduler(intervalMinutes?: number): void {
     if (schedulerInterval) {
         console.log('[HotTrendScheduler] Scheduler already running');
         return;
+    }
+
+    if (intervalMinutes !== undefined) {
+        SCRAPE_INTERVAL = intervalMinutes * 60 * 1000;
     }
 
     console.log(`[HotTrendScheduler] Starting scheduler (interval: ${SCRAPE_INTERVAL / 1000 / 60} minutes)`);
@@ -155,7 +178,7 @@ export function startHotTrendScheduler(): void {
         scrapeAllPlatforms();
     }, 60000);
 
-    // Then run every 10 minutes
+    // Then run at specified interval
     schedulerInterval = setInterval(() => {
         scrapeAllPlatforms();
     }, SCRAPE_INTERVAL);

@@ -2,10 +2,13 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import Sidebar from './components/Sidebar';
 import SettingsView from './views/SettingsView';
-import InsightsView from './views/InsightsView';
+import HotDramaView from './views/HotDramaView';
 import LoginModal from './components/LoginModal';
 import HotTrendsView from './views/HotTrendsView';
 import GlobalFocusView from './views/GlobalFocusView';
+import GameView from './views/GameView';
+import OpenSourceView from './views/OpenSourceView';
+import MusicView from './views/MusicView';
 import { Platform } from './types';
 import { Loader2 } from 'lucide-react';
 
@@ -63,9 +66,15 @@ const App: React.FC = () => {
         }
         return <SettingsView />;
       case 'insights':
-        return <InsightsView />;
+        return <HotDramaView />;
       case 'hot-trends':
         return <HotTrendsView />;
+      case 'games':
+        return <GameView />;
+      case 'opensource':
+        return <OpenSourceView />;
+      case 'music':
+        return <MusicView />;
       case 'dashboard':
       default:
         return (

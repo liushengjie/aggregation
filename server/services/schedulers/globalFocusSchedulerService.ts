@@ -1,5 +1,5 @@
-import { accountOps } from '../database';
-import { syncPlatformContent } from '../globalFocusService';
+import { accountOps, publicItemOps } from '../database';
+import { syncPlatformContent, scrapeAllPlatformsPublicContent } from '../globalFocusService';
 
 type Platform = 'Weibo' | 'Bilibili' | 'Xiaohongshu';
 
@@ -80,17 +80,40 @@ async function syncAllConnectedAccounts(): Promise<void> {
     }
 }
 
-// Sync interval in milliseconds (10 minutes)
-const SYNC_INTERVAL = 30 * 60 * 1000;
+// Sync interval in milliseconds (default: 30 minutes)
+let SYNC_INTERVAL = 30 * 60 * 1000;
 let schedulerInterval: NodeJS.Timeout | null = null;
+
+/**
+ * Set the scheduler interval (in minutes)
+ */
+export function setSchedulerInterval(intervalMinutes: number): void {
+    SYNC_INTERVAL = intervalMinutes * 60 * 1000;
+    // Restart scheduler if running
+    if (schedulerInterval) {
+        stopScheduler();
+        startScheduler(intervalMinutes);
+    }
+}
+
+/**
+ * Get the current scheduler interval (in minutes)
+ */
+export function getSchedulerInterval(): number {
+    return SYNC_INTERVAL / 1000 / 60;
+}
 
 /**
  * Start the scheduler
  */
-export function startScheduler(): void {
+export function startScheduler(intervalMinutes?: number): void {
     if (schedulerInterval) {
         console.log('[Scheduler] Scheduler already running');
         return;
+    }
+
+    if (intervalMinutes !== undefined) {
+        SYNC_INTERVAL = intervalMinutes * 60 * 1000;
     }
 
     console.log(`[Scheduler] Starting scheduler (interval: ${SYNC_INTERVAL / 1000 / 60} minutes)`);
@@ -100,7 +123,7 @@ export function startScheduler(): void {
         syncAllConnectedAccounts();
     }, 30000); // Wait 30 seconds after server start
 
-    // Then run every 10 minutes
+    // Then run every SYNC_INTERVAL
     schedulerInterval = setInterval(() => {
         syncAllConnectedAccounts();
     }, SYNC_INTERVAL);
@@ -121,6 +144,14 @@ export function stopScheduler(): void {
  * Manually trigger sync for all accounts
  */
 export async function triggerManualSync(): Promise<void> {
+    await syncAllConnectedAccounts();
+}
+
+/**
+ * Trigger sync for a specific user's accounts
+ */
+export async function triggerSync(userId: number): Promise<void> {
+    // For now, sync all connected accounts (can be filtered by userId later if needed)
     await syncAllConnectedAccounts();
 }
 
@@ -166,4 +197,123 @@ export function getSyncStatusForUser(userId: number): Platform[] {
         }
     }
     return syncingPlatforms;
+}
+
+// Public scraping scheduler
+let isPublicScrapingRunning = false;
+let publicScrapingIntervalId: NodeJS.Timeout | null = null;
+
+/**
+ * Start the public scraping scheduler
+ * @param intervalMinutes - Interval in minutes (default: 30)
+ */
+export function startPublicScrapingScheduler(intervalMinutes: number = 30) {
+  if (publicScrapingIntervalId) {
+    console.log('[Public Scraping Scheduler] Already running');
+    return;
+  }
+
+  console.log(`[Public Scraping Scheduler] Starting scheduler (interval: ${intervalMinutes} minutes)`);
+
+  // Run immediately on start
+  runPublicScraping();
+
+  // Then run on interval
+  publicScrapingIntervalId = setInterval(() => {
+    runPublicScraping();
+  }, intervalMinutes * 60 * 1000);
+}
+
+/**
+ * Stop the public scraping scheduler
+ */
+export function stopPublicScrapingScheduler() {
+  if (publicScrapingIntervalId) {
+    clearInterval(publicScrapingIntervalId);
+    publicScrapingIntervalId = null;
+    console.log('[Public Scraping Scheduler] Stopped');
+  }
+}
+
+/**
+ * Run public scraping for all platforms
+ */
+async function runPublicScraping() {
+  if (isPublicScrapingRunning) {
+    console.log('[Public Scraping Scheduler] Already running, skipping...');
+    return;
+  }
+
+  isPublicScrapingRunning = true;
+  const startTime = Date.now();
+  console.log('[Public Scraping Scheduler] Starting public content scraping...');
+
+  try {
+    // Clean up old items (older than 7 days)
+    try {
+      publicItemOps.deleteOld.run();
+      console.log('[Public Scraping Scheduler] Cleaned up old items');
+    } catch (cleanupError: any) {
+      console.error('[Public Scraping Scheduler] Error cleaning up old items:', cleanupError.message);
+    }
+
+    // Scrape all platforms with overall timeout (30 minutes max for all platforms)
+    const scrapingPromise = scrapeAllPlatformsPublicContent();
+    const overallTimeoutPromise = new Promise<{ success: boolean; results: Record<string, { totalItems: number; error?: string }> }>((resolve) => {
+      setTimeout(() => {
+        resolve({
+          success: false,
+          results: {
+            Weibo: { totalItems: 0, error: 'Overall scraping timeout' },
+            Bilibili: { totalItems: 0, error: 'Overall scraping timeout' },
+            Xiaohongshu: { totalItems: 0, error: 'Overall scraping timeout' },
+            Douyin: { totalItems: 0, error: 'Overall scraping timeout' },
+          },
+        });
+      }, 30 * 60 * 1000);
+    });
+
+    const result = await Promise.race([scrapingPromise, overallTimeoutPromise]);
+
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    if (result.success) {
+      console.log(`[Public Scraping Scheduler] Scraping completed successfully in ${elapsed}s`);
+      Object.entries(result.results).forEach(([platform, data]) => {
+        console.log(`[Public Scraping Scheduler] ${platform}: ${data.totalItems} items${data.error ? ` (error: ${data.error})` : ''}`);
+      });
+    } else {
+      console.error(`[Public Scraping Scheduler] Scraping completed with errors in ${elapsed}s`);
+      Object.entries(result.results).forEach(([platform, data]) => {
+        if (data.error) {
+          console.error(`[Public Scraping Scheduler] ${platform} error: ${data.error}`);
+        } else {
+          console.log(`[Public Scraping Scheduler] ${platform}: ${data.totalItems} items`);
+        }
+      });
+    }
+  } catch (error: any) {
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.error(`[Public Scraping Scheduler] Fatal error after ${elapsed}s:`, error.message);
+    console.error('[Public Scraping Scheduler] Error stack:', error.stack);
+  } finally {
+    isPublicScrapingRunning = false;
+    const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`[Public Scraping Scheduler] Finished. Total time: ${totalElapsed}s`);
+  }
+}
+
+/**
+ * Manually trigger public scraping (for testing or API calls)
+ */
+export async function triggerPublicScraping(): Promise<{ success: boolean; results: any }> {
+  if (isPublicScrapingRunning) {
+    return { success: false, results: { error: 'Scraping is already running' } };
+  }
+
+  try {
+    const result = await scrapeAllPlatformsPublicContent();
+    return result;
+  } catch (error: any) {
+    return { success: false, results: { error: error.message } };
+  }
 }

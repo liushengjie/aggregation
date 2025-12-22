@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import PlatformLoginModal from '../components/PlatformLoginModal';
+import { schedulerApi } from '../api/api';
 import {
   User,
   Shield,
@@ -13,24 +14,347 @@ import {
   HelpCircle,
   AlertCircle,
   Menu,
-  Settings
+  Settings,
+  Clock,
+  Play,
+  Loader2,
+  CheckCircle2,
+  XCircle
 } from 'lucide-react';
+
+interface SchedulerConfig {
+  globalFocus: { enabled: boolean; interval: number };
+  publicScraping: { enabled: boolean; interval: number };
+  hotTrends: { enabled: boolean; interval: number };
+  hotDrama: { enabled: boolean; interval: number; scheduleHour: number };
+}
+
+interface SchedulerStatus {
+  globalFocus: { running: boolean; syncingPlatforms: string[] };
+  publicScraping: { running: boolean };
+  hotTrends: { running: boolean; scrapingPlatforms: string[] };
+  hotDrama: { running: boolean };
+}
 
 const SettingsView: React.FC = () => {
   const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('accounts');
+  const [schedulerConfig, setSchedulerConfig] = useState<SchedulerConfig | null>(null);
+  const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [triggering, setTriggering] = useState<string | null>(null);
+  const [localConfig, setLocalConfig] = useState<SchedulerConfig | null>(null);
 
   const tabs = [
     { id: 'accounts', name: '平台账号', icon: <Globe size={16} /> },
     { id: 'profile', name: '个人资料', icon: <User size={16} /> },
     { id: 'security', name: '安全设置', icon: <Shield size={16} /> },
     { id: 'notifications', name: '通知提醒', icon: <Bell size={16} /> },
+    { id: 'schedulers', name: '定时任务', icon: <Clock size={16} /> },
   ];
+
+  // Load scheduler status and config
+  useEffect(() => {
+    if (activeTab === 'schedulers') {
+      loadSchedulerData();
+      const interval = setInterval(loadSchedulerData, 5000); // Refresh every 5 seconds
+      return () => clearInterval(interval);
+    }
+  }, [activeTab]);
+
+  const loadSchedulerData = async () => {
+    try {
+      const data = await schedulerApi.getStatus();
+      setSchedulerConfig(data.config);
+      setSchedulerStatus(data.status);
+      if (!localConfig) {
+        setLocalConfig(data.config);
+      }
+    } catch (error) {
+      console.error('Failed to load scheduler data:', error);
+    }
+  };
+
+  const handleTrigger = async (task: string) => {
+    try {
+      setTriggering(task);
+      await schedulerApi.trigger(task);
+      setTimeout(() => {
+        setTriggering(null);
+        loadSchedulerData();
+      }, 1000);
+    } catch (error) {
+      console.error(`Failed to trigger ${task}:`, error);
+      setTriggering(null);
+    }
+  };
+
+  const handleConfigChange = (task: string, field: string, value: any) => {
+    if (!localConfig) return;
+    const newConfig = { ...localConfig };
+    (newConfig as any)[task] = {
+      ...(newConfig as any)[task],
+      [field]: value,
+    };
+    setLocalConfig(newConfig);
+  };
+
+  const handleSaveConfig = async () => {
+    if (!localConfig) return;
+    try {
+      setLoading(true);
+      await schedulerApi.updateConfig(localConfig);
+      setSchedulerConfig(localConfig);
+      await loadSchedulerData();
+    } catch (error) {
+      console.error('Failed to save config:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const renderTabContent = () => {
     switch (activeTab) {
       case 'accounts':
         return <PlatformLoginModal />;
+      case 'schedulers':
+        return (
+          <div className="space-y-5 animate-in fade-in slide-in-from-right-2 duration-300">
+            {schedulerConfig && localConfig && schedulerStatus && (
+              <>
+                {/* Global Focus Scheduler */}
+                <div className="p-4 bg-white/50 rounded-md border border-slate-200/50 backdrop-blur-sm">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h4 className="text-sm font-black text-slate-800">全网聚焦同步</h4>
+                      <p className="text-xs text-slate-500 mt-1">同步用户关注的平台内容</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {schedulerStatus.globalFocus.running && (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-green-50 text-green-600 rounded text-[10px] font-bold">
+                          <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+                          运行中
+                        </div>
+                      )}
+                      <button
+                        onClick={() => handleTrigger('global-focus')}
+                        disabled={triggering === 'global-focus'}
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-md transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        {triggering === 'global-focus' ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <Play size={14} />
+                        )}
+                        立即执行
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">启用</label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={localConfig.globalFocus.enabled}
+                          onChange={(e) => handleConfigChange('globalFocus', 'enabled', e.target.checked)}
+                          className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                        />
+                        <span className="text-xs font-medium text-slate-700">启用定时同步</span>
+                      </label>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">间隔（分钟）</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={localConfig.globalFocus.interval}
+                        onChange={(e) => handleConfigChange('globalFocus', 'interval', parseInt(e.target.value) || 30)}
+                        className="w-full bg-white/50 border border-slate-200 rounded-md px-3 py-2 text-sm font-bold focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/10 transition-all outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Public Scraping Scheduler */}
+                <div className="p-4 bg-white/50 rounded-md border border-slate-200/50 backdrop-blur-sm">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h4 className="text-sm font-black text-slate-800">全网推荐采集</h4>
+                      <p className="text-xs text-slate-500 mt-1">采集公开平台内容</p>
+                    </div>
+                    <button
+                      onClick={() => handleTrigger('public-scraping')}
+                      disabled={triggering === 'public-scraping'}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-md transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      {triggering === 'public-scraping' ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <Play size={14} />
+                      )}
+                      立即执行
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">启用</label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={localConfig.publicScraping.enabled}
+                          onChange={(e) => handleConfigChange('publicScraping', 'enabled', e.target.checked)}
+                          className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                        />
+                        <span className="text-xs font-medium text-slate-700">启用定时采集</span>
+                      </label>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">间隔（分钟）</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={localConfig.publicScraping.interval}
+                        onChange={(e) => handleConfigChange('publicScraping', 'interval', parseInt(e.target.value) || 30)}
+                        className="w-full bg-white/50 border border-slate-200 rounded-md px-3 py-2 text-sm font-bold focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/10 transition-all outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Hot Trends Scheduler */}
+                <div className="p-4 bg-white/50 rounded-md border border-slate-200/50 backdrop-blur-sm">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h4 className="text-sm font-black text-slate-800">全网热榜采集</h4>
+                      <p className="text-xs text-slate-500 mt-1">采集各平台热门榜单</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {schedulerStatus.hotTrends.running && (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-green-50 text-green-600 rounded text-[10px] font-bold">
+                          <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+                          运行中
+                        </div>
+                      )}
+                      <button
+                        onClick={() => handleTrigger('hot-trends')}
+                        disabled={triggering === 'hot-trends'}
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-md transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        {triggering === 'hot-trends' ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <Play size={14} />
+                        )}
+                        立即执行
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">启用</label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={localConfig.hotTrends.enabled}
+                          onChange={(e) => handleConfigChange('hotTrends', 'enabled', e.target.checked)}
+                          className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                        />
+                        <span className="text-xs font-medium text-slate-700">启用定时采集</span>
+                      </label>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">间隔（分钟）</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={localConfig.hotTrends.interval}
+                        onChange={(e) => handleConfigChange('hotTrends', 'interval', parseInt(e.target.value) || 60)}
+                        className="w-full bg-white/50 border border-slate-200 rounded-md px-3 py-2 text-sm font-bold focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/10 transition-all outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Hot Drama Scheduler */}
+                <div className="p-4 bg-white/50 rounded-md border border-slate-200/50 backdrop-blur-sm">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h4 className="text-sm font-black text-slate-800">全网热剧采集</h4>
+                      <p className="text-xs text-slate-500 mt-1">采集热门影视资源</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {schedulerStatus.hotDrama.running && (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-green-50 text-green-600 rounded text-[10px] font-bold">
+                          <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+                          运行中
+                        </div>
+                      )}
+                      <button
+                        onClick={() => handleTrigger('hot-drama')}
+                        disabled={triggering === 'hot-drama'}
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-md transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        {triggering === 'hot-drama' ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <Play size={14} />
+                        )}
+                        立即执行
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">启用</label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={localConfig.hotDrama.enabled}
+                          onChange={(e) => handleConfigChange('hotDrama', 'enabled', e.target.checked)}
+                          className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                        />
+                        <span className="text-xs font-medium text-slate-700">启用定时采集</span>
+                      </label>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">执行时间（小时）</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="23"
+                        value={localConfig.hotDrama.scheduleHour}
+                        onChange={(e) => handleConfigChange('hotDrama', 'scheduleHour', parseInt(e.target.value) || 2)}
+                        className="w-full bg-white/50 border border-slate-200 rounded-md px-3 py-2 text-sm font-bold focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/10 transition-all outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Save Button */}
+                <div className="flex justify-end pt-4 border-t border-slate-200/50">
+                  <button
+                    onClick={handleSaveConfig}
+                    disabled={loading}
+                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-md transition-colors flex items-center gap-2 disabled:opacity-50 shadow-md"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" />
+                        保存中...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 size={16} />
+                        保存配置
+                      </>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        );
       case 'profile':
         return (
           <div className="space-y-5 animate-in fade-in slide-in-from-right-2 duration-300">

@@ -106,11 +106,32 @@ function initSchema() {
   // Create indexes for hot_trends
   db.exec(`CREATE INDEX IF NOT EXISTS idx_hot_trends_platform_category ON hot_trends(platform, category_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_hot_trends_fetched_at ON hot_trends(fetched_at)`);
-  
+
   // Create indexes for public_social_items
   db.exec(`CREATE INDEX IF NOT EXISTS idx_public_social_items_platform ON public_social_items(platform)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_public_social_items_source_label ON public_social_items(source_label)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_public_social_items_fetched_at ON public_social_items(fetched_at)`);
+
+  // Hot dramas table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS hot_dramas (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      original_title TEXT,
+      download_link TEXT,
+      baidu_url TEXT,
+      quark_url TEXT,
+      tmdb_id INTEGER,
+      poster_path TEXT,
+      backdrop_path TEXT,
+      overview TEXT,
+      release_date TEXT,
+      vote_average REAL,
+      media_type TEXT,
+      fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(title, download_link)
+    )
+  `);
 }
 
 // Migration function to update platform_accounts table CHECK constraint
@@ -188,10 +209,46 @@ function migratePlatformAccountsTable() {
   }
 }
 
+// Migration function to add baidu_url and quark_url columns to hot_dramas table
+function migrateHotDramasTable() {
+  try {
+    // Check if table exists
+    const tableInfo = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='hot_dramas'`).get();
+    if (!tableInfo) {
+      // Table doesn't exist, initSchema will create it
+      return;
+    }
+
+    // Check if columns already exist
+    const tableInfo2 = db.prepare(`PRAGMA table_info(hot_dramas)`).all() as Array<{ name: string }>;
+    const hasBaiduUrl = tableInfo2.some(col => col.name === 'baidu_url');
+    const hasQuarkUrl = tableInfo2.some(col => col.name === 'quark_url');
+
+    if (hasBaiduUrl && hasQuarkUrl) {
+      // Already migrated
+      return;
+    }
+
+    console.log('[Database] Migrating hot_dramas table to add baidu_url and quark_url columns...');
+
+    if (!hasBaiduUrl) {
+      db.exec(`ALTER TABLE hot_dramas ADD COLUMN baidu_url TEXT`);
+    }
+    if (!hasQuarkUrl) {
+      db.exec(`ALTER TABLE hot_dramas ADD COLUMN quark_url TEXT`);
+    }
+
+    console.log('[Database] Migration completed successfully');
+  } catch (error: any) {
+    console.error('[Database] Migration error:', error.message);
+  }
+}
+
 // Initialize schema before preparing statements
 initSchema();
 // Run migration after schema init
 migratePlatformAccountsTable();
+migrateHotDramasTable();
 
 // User operations
 export const userOps = {
@@ -456,6 +513,56 @@ export const publicItemOps = {
   deleteOld: db.prepare(`
     DELETE FROM public_social_items WHERE fetched_at < datetime('now', '-7 days')
   `),
+};
+
+// Hot drama operations
+export const hotDramaOps = {
+  upsert: db.prepare(`
+    INSERT INTO hot_dramas (title, original_title, download_link, baidu_url, quark_url, tmdb_id, poster_path, backdrop_path, overview, release_date, vote_average, media_type)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(title, download_link) DO UPDATE SET
+      original_title = excluded.original_title,
+      baidu_url = excluded.baidu_url,
+      quark_url = excluded.quark_url,
+      tmdb_id = excluded.tmdb_id,
+      poster_path = excluded.poster_path,
+      backdrop_path = excluded.backdrop_path,
+      overview = excluded.overview,
+      release_date = excluded.release_date,
+      vote_average = excluded.vote_average,
+      media_type = excluded.media_type,
+      fetched_at = datetime('now')
+  `),
+
+  findAll: db.prepare(`
+    SELECT * FROM hot_dramas
+    ORDER BY fetched_at DESC
+  `),
+
+  findAllPaginated: db.prepare(`
+    SELECT * FROM hot_dramas
+    ORDER BY fetched_at DESC
+    LIMIT ? OFFSET ?
+  `),
+
+  findAllPaginatedByType: db.prepare(`
+    SELECT * FROM hot_dramas
+    WHERE media_type = ?
+    ORDER BY fetched_at DESC
+    LIMIT ? OFFSET ?
+  `),
+
+  count: db.prepare(`
+    SELECT COUNT(*) as total FROM hot_dramas
+  `),
+
+  countByType: db.prepare(`
+    SELECT COUNT(*) as total FROM hot_dramas WHERE media_type = ?
+  `),
+
+  deleteAll: db.prepare(`
+    DELETE FROM hot_dramas
+  `)
 };
 
 export default db;

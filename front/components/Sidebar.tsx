@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LayoutDashboard, Settings, TrendingUp, Hash, Sparkles, Layers, X, Flame, LogIn, LogOut } from 'lucide-react';
+import { LayoutDashboard, Settings, TrendingUp, Hash, Sparkles, Layers, X, Flame, LogIn, LogOut, Gamepad2, Code, Music } from 'lucide-react';
 import { Platform } from '../types';
 import { PLATFORM_NAMES } from '../constants';
 import { globalFocusApi, accountsApi, publicItemsApi } from '../api/api';
@@ -205,7 +205,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, activePlat
                   }`}
               >
                 <TrendingUp size={18} className={activeView === 'insights' ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'} />
-                <span className="text-sm text-left">深度洞察</span>
+                <span className="text-sm text-left">全网热剧</span>
               </button>
               <button
                 onClick={() => setActiveView('hot-trends')}
@@ -216,6 +216,36 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, activePlat
               >
                 <Flame size={18} className={activeView === 'hot-trends' ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'} />
                 <span className="text-sm text-left">全网热榜</span>
+              </button>
+              <button
+                onClick={() => setActiveView('games')}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-200 group relative ${activeView === 'games'
+                  ? 'bg-slate-900 text-white font-bold shadow-md shadow-slate-300/50'
+                  : 'text-slate-500 hover:bg-white/40 hover:text-slate-800 font-medium border border-transparent'
+                  }`}
+              >
+                <Gamepad2 size={18} className={activeView === 'games' ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'} />
+                <span className="text-sm text-left">全网游戏</span>
+              </button>
+              <button
+                onClick={() => setActiveView('opensource')}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-200 group relative ${activeView === 'opensource'
+                  ? 'bg-slate-900 text-white font-bold shadow-md shadow-slate-300/50'
+                  : 'text-slate-500 hover:bg-white/40 hover:text-slate-800 font-medium border border-transparent'
+                  }`}
+              >
+                <Code size={18} className={activeView === 'opensource' ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'} />
+                <span className="text-sm text-left">全网开源</span>
+              </button>
+              <button
+                onClick={() => setActiveView('music')}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-200 group relative ${activeView === 'music'
+                  ? 'bg-slate-900 text-white font-bold shadow-md shadow-slate-300/50'
+                  : 'text-slate-500 hover:bg-white/40 hover:text-slate-800 font-medium border border-transparent'
+                  }`}
+              >
+                <Music size={18} className={activeView === 'music' ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'} />
+                <span className="text-sm text-left">全网音乐</span>
               </button>
             </div>
           </section>

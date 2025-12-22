@@ -29,10 +29,10 @@
 - 🔍 实时搜索和平台筛选功能
 - ⚡ 流畅的交互动画效果
 
-### 趋势洞察视图
+### 全网热剧视图
 
-<!-- 请在此处添加趋势洞察页面截图 -->
-<!-- 截图路径: docs/screenshots/insights-view.png -->
+<!-- 请在此处添加全网热剧页面截图 -->
+<!-- 截图路径: docs/screenshots/hot-drama-view.png -->
 
 **核心功能：**
 - 📊 AI 驱动的趋势分析
@@ -172,7 +172,7 @@ npm run dev
 aggregation/
 ├── components/          # React 组件
 │   ├── ContentCard.tsx      # 内容卡片组件
-│   ├── InsightsView.tsx     # 趋势洞察视图
+│   ├── HotDramaView.tsx     # 全网热剧视图
 │   ├── LoginForm.tsx        # 登录表单
 │   ├── PlatformLoginModal.tsx # 平台登录模态框
 │   ├── SettingsView.tsx     # 设置视图

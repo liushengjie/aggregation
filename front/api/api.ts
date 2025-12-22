@@ -97,19 +97,19 @@ export const accountsApi = {
         fetchApi('/accounts/sync/status'),
 };
 
-// Public Items API (no auth required)
+// Public Items API (no auth required) - now under /api/global-focus/public
 export const publicItemsApi = {
     getAll: (page = 1, limit = 30, platform?: string) => {
         const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
         if (platform) params.append('platform', platform);
-        return fetchApi(`/public-items?${params.toString()}`);
+        return fetchApi(`/global-focus/public?${params.toString()}`);
     },
 
     getByPlatform: (platform: string, page = 1, limit = 30) =>
-        fetchApi(`/public-items/${platform}?page=${page}&limit=${limit}`),
+        fetchApi(`/global-focus/public/${platform}?page=${page}&limit=${limit}`),
 
     getCounts: () =>
-        fetchApi('/public-items/stats/counts'),
+        fetchApi('/global-focus/public/stats/counts'),
 };
 
 // Global Focus API (user-specific, requires auth)
@@ -143,6 +143,35 @@ export const hotTrendsApi = {
 
     syncPlatform: (platform: string) =>
         fetchApi(`/hot-trends/sync/${platform}`, { method: 'POST' }),
+};
+
+// Hot Drama API
+export const hotDramaApi = {
+    getAll: (page: number = 1, limit: number = 30, mediaType?: 'movie' | 'tv') => {
+        const params = new URLSearchParams({
+            page: page.toString(),
+            limit: limit.toString(),
+        });
+        if (mediaType) {
+            params.append('media_type', mediaType);
+        }
+        return fetchApi(`/hot-drama?${params.toString()}`);
+    },
+
+    refresh: () =>
+        fetchApi('/hot-drama/refresh', { method: 'POST' }),
+};
+
+// Scheduler API
+export const schedulerApi = {
+    getStatus: () =>
+        fetchApi('/scheduler/status'),
+
+    updateConfig: (config: any) =>
+        fetchApi('/scheduler/config', { method: 'POST', body: JSON.stringify(config) }),
+
+    trigger: (task: string) =>
+        fetchApi(`/scheduler/trigger/${task}`, { method: 'POST' }),
 };
 
 // Health check
