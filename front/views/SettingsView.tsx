@@ -28,6 +28,7 @@ interface SchedulerConfig {
   hotTrends: { enabled: boolean; interval: number; initialDelay: number };
   hotDrama: { enabled: boolean; interval: number; initialDelay: number };
   maoyan: { enabled: boolean; interval: number; initialDelay: number };
+  opensource: { enabled: boolean; interval: number; initialDelay: number };
 }
 
 interface SchedulerStatus {
@@ -36,6 +37,7 @@ interface SchedulerStatus {
   hotTrends: { running: boolean; scrapingPlatforms: string[] };
   hotDrama: { running: boolean };
   maoyan: { running: boolean };
+  opensource: { running: boolean };
 }
 
 const SettingsView: React.FC = () => {
@@ -69,8 +71,17 @@ const SettingsView: React.FC = () => {
       const data = await schedulerApi.getStatus();
       setSchedulerConfig(data.config);
       setSchedulerStatus(data.status);
-      // Always sync localConfig with server config
-      setLocalConfig(data.config);
+      // Only update localConfig if it matches server config (no unsaved changes)
+      // This prevents overwriting user's local edits before they save
+      setLocalConfig(prevLocalConfig => {
+        if (!prevLocalConfig) {
+          return data.config;
+        }
+        // Check if localConfig has unsaved changes by comparing with server config
+        const hasUnsavedChanges = JSON.stringify(prevLocalConfig) !== JSON.stringify(data.config);
+        // Only update if there are no unsaved changes, or if this is the first load
+        return hasUnsavedChanges ? prevLocalConfig : data.config;
+      });
     } catch (error) {
       console.error('Failed to load scheduler data:', error);
     }
@@ -90,7 +101,7 @@ const SettingsView: React.FC = () => {
     }
   };
 
-  const handleConfigChange = (task: string, field: string, value: any) => {
+  const handleConfigChange = async (task: string, field: string, value: any) => {
     if (!localConfig) return;
     const newConfig = { ...localConfig };
     (newConfig as any)[task] = {
@@ -98,6 +109,22 @@ const SettingsView: React.FC = () => {
       [field]: value,
     };
     setLocalConfig(newConfig);
+    
+    // Auto-save when enabled/disabled state changes
+    // This ensures the checkbox state is immediately persisted
+    if (field === 'enabled') {
+      try {
+        await schedulerApi.updateConfig(newConfig);
+        setSchedulerConfig(newConfig);
+        // Refresh status after saving
+        const data = await schedulerApi.getStatus();
+        setSchedulerStatus(data.status);
+      } catch (error) {
+        console.error('Failed to auto-save config:', error);
+        // Revert on error
+        setLocalConfig(localConfig);
+      }
+    }
   };
 
   const handleSaveConfig = async () => {
@@ -420,6 +447,71 @@ const SettingsView: React.FC = () => {
                         min="1"
                         value={localConfig.maoyan?.interval || 5}
                         onChange={(e) => handleConfigChange('maoyan', 'interval', parseInt(e.target.value) || 5)}
+                        className="w-full bg-white/50 border border-slate-200 rounded-md px-3 py-2 text-sm font-bold focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/10 transition-all outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* OpenSource Scheduler */}
+                <div className="p-4 bg-white/50 rounded-md border border-slate-200/50 backdrop-blur-sm">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h4 className="text-sm font-black text-slate-800">GitHub Trending</h4>
+                      <p className="text-xs text-slate-500 mt-1">采集 GitHub 热门开源项目</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {schedulerStatus.opensource?.running && (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-green-50 text-green-600 rounded text-[10px] font-bold">
+                          <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+                          运行中
+                        </div>
+                      )}
+                      <button
+                        onClick={() => handleTrigger('opensource')}
+                        disabled={triggering === 'opensource'}
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-md transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        {triggering === 'opensource' ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <Play size={14} />
+                        )}
+                        立即执行
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">启用</label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={localConfig.opensource?.enabled || false}
+                          onChange={(e) => handleConfigChange('opensource', 'enabled', e.target.checked)}
+                          className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                        />
+                        <span className="text-xs font-medium text-slate-700">启用定时采集</span>
+                      </label>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">初次启动（分钟）</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={localConfig.opensource?.initialDelay || 1}
+                        onChange={(e) => handleConfigChange('opensource', 'initialDelay', parseFloat(e.target.value) || 1)}
+                        className="w-full bg-white/50 border border-slate-200 rounded-md px-3 py-2 text-sm font-bold focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/10 transition-all outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">间隔（分钟）</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={localConfig.opensource?.interval || 60}
+                        onChange={(e) => handleConfigChange('opensource', 'interval', parseInt(e.target.value) || 60)}
                         className="w-full bg-white/50 border border-slate-200 rounded-md px-3 py-2 text-sm font-bold focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/10 transition-all outline-none"
                       />
                     </div>

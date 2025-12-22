@@ -9,9 +9,9 @@ import accountsRouter from './routes/accounts.js';
 import globalFocusRouter from './routes/globalFocus.js';
 import imageProxyRouter from './routes/imageProxy.js';
 import hotTrendsRouter from './routes/hotTrends.js';
-import hotDramaRouter from './routes/hotDrama.js';
+import hotDramaRouter, { maoyanRouter } from './routes/hotDrama.js';
 import schedulerRouter from './routes/scheduler.js';
-import maoyanRouter from './routes/maoyan.js';
+import opensourceRouter from './routes/opensource.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -49,8 +49,10 @@ app.use('/api/image', imageProxyRouter);
 app.use('/api/hot-trends', hotTrendsRouter);
 app.use('/api/hot-drama', hotDramaRouter);
 app.use('/api/scheduler', schedulerRouter);
-app.use('/api/maoyan', maoyanRouter);
+app.use('/api/opensource', opensourceRouter);
 // Public items routes are now under /api/global-focus/public
+// Maoyan routes: /api/maoyan (legacy) and /api/hot-drama/maoyan (new)
+app.use('/api/maoyan', maoyanRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {

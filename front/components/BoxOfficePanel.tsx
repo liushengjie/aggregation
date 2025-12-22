@@ -43,9 +43,13 @@ interface MaoyanData {
 
 type TabType = 'boxOffice' | 'calendar' | 'tv' | 'webSeries' | 'variety';
 
+interface BoxOfficePanelProps {
+  onSearch?: (title: string, mediaType: 'movie' | 'tv') => void;
+}
+
 const AUTO_REFRESH_INTERVAL = 5 * 60 * 1000;
 
-const BoxOfficePanel: React.FC = () => {
+const BoxOfficePanel: React.FC<BoxOfficePanelProps> = ({ onSearch }) => {
   const [activeTab, setActiveTab] = useState<TabType>('boxOffice');
   const [data, setData] = useState<MaoyanData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -153,7 +157,11 @@ const BoxOfficePanel: React.FC = () => {
               {activeTab === 'boxOffice' && (
                 <div className="p-2 space-y-1.5">
                   {(data?.boxOffice || []).map((movie) => (
-                    <div key={movie.movieId} className="flex items-center gap-2.5 p-2 bg-white/50 hover:bg-white/80 rounded-lg border border-white/60 transition-all">
+                    <div 
+                      key={movie.movieId} 
+                      className="flex items-center gap-2.5 p-2 bg-white/50 hover:bg-white/80 rounded-lg border border-white/60 transition-all cursor-pointer"
+                      onClick={() => onSearch?.(movie.title, 'movie')}
+                    >
                       <div className={`flex-shrink-0 w-6 h-6 rounded flex items-center justify-center text-[11px] font-black ${getRankStyle(movie.rank)}`}>
                         {movie.rank}
                       </div>
@@ -161,7 +169,7 @@ const BoxOfficePanel: React.FC = () => {
                         <img src={movie.poster} alt={movie.title} className="flex-shrink-0 w-9 h-12 object-cover rounded bg-slate-200" loading="lazy" />
                       )}
                       <div className="flex-1 min-w-0">
-                        <h4 className="text-sm font-bold text-slate-800 truncate">{movie.title}</h4>
+                        <h4 className="text-sm font-bold text-slate-800 truncate hover:text-rose-600 transition-colors">{movie.title}</h4>
                         <span className="text-[10px] text-slate-400">{formatDate(movie.releaseDate)}</span>
                       </div>
                       <div className="flex-shrink-0 text-sm font-black text-rose-600">{formatBoxOffice(movie.boxOffice, movie.boxOfficeUnit)}</div>
@@ -175,12 +183,16 @@ const BoxOfficePanel: React.FC = () => {
               {activeTab === 'calendar' && (
                 <div className="p-2 space-y-1.5">
                   {(data?.calendar || []).map((movie) => (
-                    <div key={movie.movieId} className="flex items-center gap-2.5 p-2 bg-white/50 hover:bg-white/80 rounded-lg border border-white/60 transition-all">
+                    <div 
+                      key={movie.movieId} 
+                      className="flex items-center gap-2.5 p-2 bg-white/50 hover:bg-white/80 rounded-lg border border-white/60 transition-all cursor-pointer"
+                      onClick={() => onSearch?.(movie.title, 'movie')}
+                    >
                       {movie.poster && (
                         <img src={movie.poster} alt={movie.title} className="flex-shrink-0 w-10 h-14 object-cover rounded bg-slate-200" loading="lazy" />
                       )}
                       <div className="flex-1 min-w-0">
-                        <h4 className="text-sm font-bold text-slate-800 truncate mb-1">{movie.title}</h4>
+                        <h4 className="text-sm font-bold text-slate-800 truncate mb-1 hover:text-rose-600 transition-colors">{movie.title}</h4>
                         <div className="flex items-center gap-2 text-[10px]">
                           <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded font-bold">{formatDate(movie.releaseDate)}</span>
                           {movie.wantCount && <span className="text-slate-500">{movie.wantCount.toLocaleString()}人想看</span>}
@@ -196,7 +208,11 @@ const BoxOfficePanel: React.FC = () => {
               {activeTab === 'tv' && (
                 <div className="p-2 space-y-1.5">
                   {(data?.tvRanking || []).map((item) => (
-                    <div key={item.itemId} className="flex items-center gap-2.5 p-2 bg-white/50 hover:bg-white/80 rounded-lg border border-white/60 transition-all">
+                    <div 
+                      key={item.itemId} 
+                      className="flex items-center gap-2.5 p-2 bg-white/50 hover:bg-white/80 rounded-lg border border-white/60 transition-all cursor-pointer"
+                      onClick={() => onSearch?.(item.title, 'tv')}
+                    >
                       <div className={`flex-shrink-0 w-6 h-6 rounded flex items-center justify-center text-[11px] font-black ${getRankStyle(item.rank)}`}>
                         {item.rank}
                       </div>
@@ -204,7 +220,7 @@ const BoxOfficePanel: React.FC = () => {
                         <img src={item.poster} alt={item.title} className="flex-shrink-0 w-9 h-12 object-cover rounded bg-slate-200" loading="lazy" />
                       )}
                       <div className="flex-1 min-w-0">
-                        <h4 className="text-sm font-bold text-slate-800 truncate">{item.title}</h4>
+                        <h4 className="text-sm font-bold text-slate-800 truncate hover:text-rose-600 transition-colors">{item.title}</h4>
                         <div className="flex items-center gap-1 text-[10px] text-slate-500">
                           <Flame size={10} className="text-orange-500" />
                           <span>{item.score.toFixed(0)}</span>
@@ -223,7 +239,11 @@ const BoxOfficePanel: React.FC = () => {
               {activeTab === 'webSeries' && (
                 <div className="p-2 space-y-1.5">
                   {(data?.webSeriesRanking || []).map((item) => (
-                    <div key={item.itemId} className="flex items-center gap-2.5 p-2 bg-white/50 hover:bg-white/80 rounded-lg border border-white/60 transition-all">
+                    <div 
+                      key={item.itemId} 
+                      className="flex items-center gap-2.5 p-2 bg-white/50 hover:bg-white/80 rounded-lg border border-white/60 transition-all cursor-pointer"
+                      onClick={() => onSearch?.(item.title, 'tv')}
+                    >
                       <div className={`flex-shrink-0 w-6 h-6 rounded flex items-center justify-center text-[11px] font-black ${getRankStyle(item.rank)}`}>
                         {item.rank}
                       </div>
@@ -231,7 +251,7 @@ const BoxOfficePanel: React.FC = () => {
                         <img src={item.poster} alt={item.title} className="flex-shrink-0 w-9 h-12 object-cover rounded bg-slate-200" loading="lazy" />
                       )}
                       <div className="flex-1 min-w-0">
-                        <h4 className="text-sm font-bold text-slate-800 truncate">{item.title}</h4>
+                        <h4 className="text-sm font-bold text-slate-800 truncate hover:text-rose-600 transition-colors">{item.title}</h4>
                         <div className="flex items-center gap-1 text-[10px] text-slate-500">
                           <Flame size={10} className="text-orange-500" />
                           <span>{item.score.toFixed(0)}</span>
@@ -250,7 +270,11 @@ const BoxOfficePanel: React.FC = () => {
               {activeTab === 'variety' && (
                 <div className="p-2 space-y-1.5">
                   {(data?.varietyRanking || []).map((item) => (
-                    <div key={item.itemId} className="flex items-center gap-2.5 p-2 bg-white/50 hover:bg-white/80 rounded-lg border border-white/60 transition-all">
+                    <div 
+                      key={item.itemId} 
+                      className="flex items-center gap-2.5 p-2 bg-white/50 hover:bg-white/80 rounded-lg border border-white/60 transition-all cursor-pointer"
+                      onClick={() => onSearch?.(item.title, 'tv')}
+                    >
                       <div className={`flex-shrink-0 w-6 h-6 rounded flex items-center justify-center text-[11px] font-black ${getRankStyle(item.rank)}`}>
                         {item.rank}
                       </div>
@@ -258,7 +282,7 @@ const BoxOfficePanel: React.FC = () => {
                         <img src={item.poster} alt={item.title} className="flex-shrink-0 w-9 h-12 object-cover rounded bg-slate-200" loading="lazy" />
                       )}
                       <div className="flex-1 min-w-0">
-                        <h4 className="text-sm font-bold text-slate-800 truncate">{item.title}</h4>
+                        <h4 className="text-sm font-bold text-slate-800 truncate hover:text-rose-600 transition-colors">{item.title}</h4>
                         <div className="flex items-center gap-1 text-[10px] text-slate-500">
                           <Flame size={10} className="text-orange-500" />
                           <span>{item.score.toFixed(0)}</span>

@@ -293,23 +293,33 @@ export async function scrapeMaoyanData(): Promise<MaoyanData> {
         
         const tvItems = await desktopPage.evaluate(() => {
           const items: any[] = [];
+          // 平台名称列表
+          const platforms = ['爱奇艺', '腾讯视频', '优酷', '芒果TV', '哔哩哔哩', 'B站', '搜狐视频', '乐视', 'Netflix', '多平台'];
+          
           document.querySelectorAll('.dashboard-table tbody tr, table tbody tr').forEach((row, i) => {
             if (i >= 10 || items.length >= 10) return;
             
             const cells = row.querySelectorAll('td');
             if (cells.length < 2) return;
             
-            // 第一列格式: "01老舅多平台播放  上线8天"
+            // 第一列格式: "01老舅多平台播放  上线8天" 或 "03时差一万公里芒果TV独播  上线22天"
             const firstCell = cells[0]?.textContent?.trim() || '';
-            const match = firstCell.match(/^(\d+)([^\d].+?)(?:多平台|独播|上线|播放)/);
             
-            let title = '';
-            if (match) {
-              title = match[2].trim();
-            } else {
-              // 备用解析
-              title = firstCell.replace(/^\d+/, '').split(/多平台|独播|上线|播放/)[0].trim();
+            // 先去掉排名数字
+            let text = firstCell.replace(/^\d+/, '').trim();
+            
+            // 去掉 "上线X天" 及之后的内容
+            text = text.split(/\s+上线/)[0].trim();
+            
+            // 去掉 "独播" 或 "播放" 及之后的内容
+            text = text.split(/独播|播放/)[0].trim();
+            
+            // 去掉平台名称
+            let title = text;
+            for (const platform of platforms) {
+              title = title.replace(platform, '');
             }
+            title = title.trim();
             
             // 第二列是热度
             const heat = cells[1]?.textContent?.trim() || '';
@@ -347,6 +357,8 @@ export async function scrapeMaoyanData(): Promise<MaoyanData> {
         
         const webItems = await desktopPage.evaluate(() => {
           const items: any[] = [];
+          const platforms = ['爱奇艺', '腾讯视频', '优酷', '芒果TV', '哔哩哔哩', 'B站', '搜狐视频', '乐视', 'Netflix', '多平台'];
+          
           document.querySelectorAll('.dashboard-table tbody tr, table tbody tr').forEach((row, i) => {
             if (i >= 10 || items.length >= 10) return;
             
@@ -354,14 +366,16 @@ export async function scrapeMaoyanData(): Promise<MaoyanData> {
             if (cells.length < 2) return;
             
             const firstCell = cells[0]?.textContent?.trim() || '';
-            const match = firstCell.match(/^(\d+)([^\d].+?)(?:多平台|独播|上线|播放)/);
             
-            let title = '';
-            if (match) {
-              title = match[2].trim();
-            } else {
-              title = firstCell.replace(/^\d+/, '').split(/多平台|独播|上线|播放/)[0].trim();
+            let text = firstCell.replace(/^\d+/, '').trim();
+            text = text.split(/\s+上线/)[0].trim();
+            text = text.split(/独播|播放/)[0].trim();
+            
+            let title = text;
+            for (const platform of platforms) {
+              title = title.replace(platform, '');
             }
+            title = title.trim();
             
             const heat = cells[1]?.textContent?.trim() || '';
             const playCount = cells[2]?.textContent?.trim() || '';
@@ -396,6 +410,8 @@ export async function scrapeMaoyanData(): Promise<MaoyanData> {
         
         const varietyItems = await desktopPage.evaluate(() => {
           const items: any[] = [];
+          const platforms = ['爱奇艺', '腾讯视频', '优酷', '芒果TV', '哔哩哔哩', 'B站', '搜狐视频', '乐视', 'Netflix', '多平台'];
+          
           document.querySelectorAll('.dashboard-table tbody tr, table tbody tr').forEach((row, i) => {
             if (i >= 10 || items.length >= 10) return;
             
@@ -403,14 +419,22 @@ export async function scrapeMaoyanData(): Promise<MaoyanData> {
             if (cells.length < 2) return;
             
             const firstCell = cells[0]?.textContent?.trim() || '';
-            const match = firstCell.match(/^(\d+)([^\d].+?)(?:多平台|独播|上线|播放)/);
             
-            let title = '';
-            if (match) {
-              title = match[2].trim();
-            } else {
-              title = firstCell.replace(/^\d+/, '').split(/多平台|独播|上线|播放/)[0].trim();
+            // 先去掉排名数字
+            let text = firstCell.replace(/^\d+/, '').trim();
+            
+            // 去掉 "上线X天" 及之后的内容
+            text = text.split(/\s+上线/)[0].trim();
+            
+            // 去掉 "独播" 或 "播放" 及之后的内容
+            text = text.split(/独播|播放/)[0].trim();
+            
+            // 去掉平台名称
+            let title = text;
+            for (const platform of platforms) {
+              title = title.replace(platform, '');
             }
+            title = title.trim();
             
             const heat = cells[1]?.textContent?.trim() || '';
             const playCount = cells[2]?.textContent?.trim() || '';

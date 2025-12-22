@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Download, Star, Calendar, Film, Tv, Menu, Loader2, Cloud } from 'lucide-react';
+import { Download, Star, Calendar, Film, Tv, Menu, Loader2, Cloud, Search, X } from 'lucide-react';
 import Masonry from 'react-masonry-css';
 import { hotDramaApi } from '../api/api';
 import BoxOfficePanel from '../components/BoxOfficePanel';
@@ -51,6 +51,7 @@ const HotDramaView: React.FC = () => {
   const [dramas, setDramas] = useState<HotDrama[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'movie' | 'tv'>('tv'); // 默认显示电视剧
+  const [searchQuery, setSearchQuery] = useState('');
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -62,9 +63,10 @@ const HotDramaView: React.FC = () => {
   
   // Scroll container ref
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load items from API with pagination
-  const loadItems = useCallback(async (page: number = 1, append: boolean = false) => {
+  const loadItems = useCallback(async (page: number = 1, append: boolean = false, search?: string) => {
     if (append) {
       setShowLoadingIndicator(true);
       setIsAppending(true);
@@ -74,7 +76,7 @@ const HotDramaView: React.FC = () => {
     const loadStartTime = Date.now();
 
     try {
-      const data = await hotDramaApi.getAll(page, itemsPerPage, activeTab);
+      const data = await hotDramaApi.getAll(page, itemsPerPage, activeTab, search);
       
       if (data.items && data.items.length > 0) {
         // Data is already filtered by media_type and sorted by release_date DESC on the server
@@ -127,8 +129,28 @@ const HotDramaView: React.FC = () => {
     if (!hasMore || loading || isAppending) return;
     const nextPage = currentPage + 1;
     setCurrentPage(nextPage);
-    loadItems(nextPage, true);
-  }, [hasMore, loading, isAppending, currentPage, loadItems]);
+    loadItems(nextPage, true, searchQuery);
+  }, [hasMore, loading, isAppending, currentPage, loadItems, searchQuery]);
+
+  // 搜索防抖
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    searchTimeoutRef.current = setTimeout(() => {
+      setCurrentPage(1);
+      setHasMore(true);
+      setDramas([]);
+      loadItems(1, false, searchQuery);
+    }, 300);
+    
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery, activeTab, loadItems]);
 
   // Handle scroll to load more
   useEffect(() => {
@@ -152,13 +174,6 @@ const HotDramaView: React.FC = () => {
     container.addEventListener('scroll', handleScroll, { passive: true });
     return () => container.removeEventListener('scroll', handleScroll);
   }, [hasMore, loading, isAppending, loadMore]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-    setHasMore(true);
-    setDramas([]);
-    loadItems(1, false);
-  }, [activeTab, loadItems]);
 
   const getPosterUrl = (path: string | null) => {
     if (!path) return null;
@@ -239,7 +254,12 @@ const HotDramaView: React.FC = () => {
       <div className="flex-1 flex gap-4 overflow-hidden px-3 lg:px-0 pt-3 lg:pt-0">
         {/* 左侧排名面板 - 桌面端占据四分之一 */}
         <div className="hidden lg:flex lg:flex-col lg:w-1/4 shrink-0 h-full">
-          <BoxOfficePanel />
+          <BoxOfficePanel 
+            onSearch={(title, mediaType) => {
+              setSearchQuery(title);
+              setActiveTab(mediaType);
+            }}
+          />
         </div>
 
         {/* 右侧热剧内容 */}
@@ -247,10 +267,28 @@ const HotDramaView: React.FC = () => {
           {/* 内容卡片 */}
           <div className="flex-1 flex flex-col bg-white/40 backdrop-blur-md rounded-lg border border-white/60 overflow-hidden">
             {/* 头部标题 - 简洁风格 */}
-            <div className="hidden lg:flex items-center px-4 py-3 border-b border-white/60 bg-gradient-to-r from-rose-50/80 to-pink-50/80">
+            <div className="hidden lg:flex items-center justify-between px-4 py-3 border-b border-white/60 bg-gradient-to-r from-rose-50/80 to-pink-50/80">
               <div className="flex items-center gap-2">
                 <Film size={18} className="text-rose-500" />
                 <h2 className="text-sm font-black text-slate-800">热门资源</h2>
+              </div>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="搜索影视..."
+                  className="w-48 pl-8 pr-8 py-1.5 text-xs bg-white/60 border border-white/60 rounded-md focus:outline-none focus:border-rose-300 focus:ring-2 focus:ring-rose-500/10 transition-all"
+                />
+                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -421,7 +459,7 @@ const HotDramaView: React.FC = () => {
                   </div>
                   <h3 className="text-sm font-black text-slate-800">暂无内容</h3>
                   <p className="text-xs text-slate-500 font-medium mt-1">
-                    No {activeTab === 'movie' ? 'movies' : 'TV series'} found. Click refresh to fetch data.
+                    {searchQuery ? '尝试更换关键词' : '点击刷新获取数据'}
                   </p>
                 </div>
               )}

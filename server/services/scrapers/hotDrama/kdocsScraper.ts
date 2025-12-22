@@ -101,21 +101,61 @@ function parseContent(content: string): Array<{ title: string; baiduUrl: string 
         
         // 跳过无效标题（包括分割线）
         if (!titlePart || titlePart.length < 2) continue;
-        if (titlePart.includes("热剧清晰度专用文档") || titlePart.includes("搜索方法")) continue;
         if (titlePart.includes("小丸子")) continue;
-        if (titlePart.match(/^链接[：:]/)) continue;
+        
+        // 处理 "链接：xxx" 格式，提取实际标题
+        if (titlePart.match(/^链接[：:]/) || titlePart.includes("清晰度专用文档")) {
+            // 1. 先尝试提取最后一个分割线后面的内容
+            const afterSeparator = titlePart.match(/-{3,}\s*([^-]+)$/);
+            if (afterSeparator && afterSeparator[1] && afterSeparator[1].trim().length > 1) {
+                titlePart = afterSeparator[1].trim();
+            } else {
+                // 2. 尝试提取🔝后面的内容
+                const afterIcon = titlePart.match(/🔝(.+)$/);
+                if (afterIcon && afterIcon[1]) {
+                    titlePart = afterIcon[1].trim();
+                } else {
+                    // 3. 尝试提取 (NEW) 后面的内容
+                    const afterNew = titlePart.match(/\(NEW\)\s*(.+)$/i);
+                    if (afterNew && afterNew[1]) {
+                        titlePart = afterNew[1].trim();
+                    } else if (titlePart.match(/^链接[：:]/) || titlePart.includes("清晰度专用文档")) {
+                        continue; // 跳过无法解析的链接格式
+                    }
+                }
+            }
+        }
+        
+        // 再次检查是否包含无效内容
+        if (titlePart.includes("热剧清晰度专用文档") || titlePart.includes("搜索方法")) continue;
+        if (titlePart.includes("清晰度专用文档")) continue;
+        
         // 跳过分割线
         if (/^-{10,}$/.test(titlePart) || /^=+$/.test(titlePart)) continue;
         if (titlePart.includes("日期分割线") || (titlePart.includes("分割线") && !/[\u4e00-\u9fa5]/.test(titlePart.replace(/分割线/g, "")))) continue;
         
-        // 标题处理：如果包含.则取.前面的部分，如果没有.则取"（"前面的部分
+        // 标题处理：如果包含.则取.前面的部分，如果没有.则取括号前面的部分
         let name = titlePart;
         if (name.includes('.')) {
             // 取第一个.之前的部分
             name = name.split('.')[0].trim();
-        } else if (name.includes('（')) {
-            // 取第一个"（"之前的部分
-            name = name.split('（')[0].trim();
+        } else if (name.includes('（') || name.includes('(')) {
+            // 取第一个括号之前的部分（中文或英文括号）
+            const chineseIndex = name.indexOf('（');
+            const englishIndex = name.indexOf('(');
+            let splitIndex = -1;
+            
+            if (chineseIndex !== -1 && englishIndex !== -1) {
+                splitIndex = Math.min(chineseIndex, englishIndex);
+            } else if (chineseIndex !== -1) {
+                splitIndex = chineseIndex;
+            } else if (englishIndex !== -1) {
+                splitIndex = englishIndex;
+            }
+            
+            if (splitIndex !== -1) {
+                name = name.substring(0, splitIndex).trim();
+            }
         }
         
         // 往后找夸克链接（到下一个资源或500字符内）
@@ -377,18 +417,58 @@ export const scrapeKDocs = async (url: string): Promise<ScrapedDrama[]> => {
                 // 跳过无效标题（包括分割线）
                 if (!title || title.length < 2) continue;
                 if (!/[\u4e00-\u9fa5]/.test(title)) continue;
-                if (title.includes("热剧清晰度") || title.includes("搜索方法")) continue;
                 // 跳过分割线
                 if (/^-{10,}$/.test(title) || /^=+$/.test(title)) continue;
                 if (title.includes("日期分割线") || (title.includes("分割线") && !/[\u4e00-\u9fa5]/.test(title.replace(/分割线/g, "")))) continue;
                 
-                // 标题处理：如果包含.则取.前面的部分，如果没有.则取"（"前面的部分
+                // 处理 "链接：xxx" 格式，提取实际标题
+                if (title.match(/^链接[：:]/) || title.includes("清晰度专用文档")) {
+                    // 1. 先尝试提取最后一个分割线后面的内容
+                    const afterSeparator = title.match(/-{3,}\s*([^-]+)$/);
+                    if (afterSeparator && afterSeparator[1] && afterSeparator[1].trim().length > 1) {
+                        title = afterSeparator[1].trim();
+                    } else {
+                        // 2. 尝试提取🔝后面的内容
+                        const afterIcon = title.match(/🔝(.+)$/);
+                        if (afterIcon && afterIcon[1]) {
+                            title = afterIcon[1].trim();
+                        } else {
+                            // 3. 尝试提取 (NEW) 后面的内容
+                            const afterNew = title.match(/\(NEW\)\s*(.+)$/i);
+                            if (afterNew && afterNew[1]) {
+                                title = afterNew[1].trim();
+                            } else if (title.match(/^链接[：:]/) || title.includes("清晰度专用文档")) {
+                                continue; // 跳过无法解析的链接格式
+                            }
+                        }
+                    }
+                }
+                
+                // 再次检查是否包含无效内容
+                if (title.includes("热剧清晰度") || title.includes("搜索方法")) continue;
+                if (title.includes("清晰度专用文档")) continue;
+                
+                // 标题处理：如果包含.则取.前面的部分，如果没有.则取括号前面的部分
                 if (title.includes('.')) {
                     // 取第一个.之前的部分
                     title = title.split('.')[0].trim();
-                } else if (title.includes('（')) {
-                    // 取第一个"（"之前的部分
-                    title = title.split('（')[0].trim();
+                } else if (title.includes('（') || title.includes('(')) {
+                    // 取第一个括号之前的部分（中文或英文括号）
+                    const chineseIndex = title.indexOf('（');
+                    const englishIndex = title.indexOf('(');
+                    let splitIndex = -1;
+                    
+                    if (chineseIndex !== -1 && englishIndex !== -1) {
+                        splitIndex = Math.min(chineseIndex, englishIndex);
+                    } else if (chineseIndex !== -1) {
+                        splitIndex = chineseIndex;
+                    } else if (englishIndex !== -1) {
+                        splitIndex = englishIndex;
+                    }
+                    
+                    if (splitIndex !== -1) {
+                        title = title.substring(0, splitIndex).trim();
+                    }
                 }
                 
                 // 往后找夸克链接（到下一个资源或500字符内）

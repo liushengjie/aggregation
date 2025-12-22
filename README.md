@@ -145,6 +145,11 @@ PORT=3001
 
 # Session 密钥（生产环境请务必修改）
 SESSION_SECRET=your-secret-key-here
+
+# 百度翻译API配置（可选，用于GitHub Trending描述翻译）
+# 在 https://fanyi-api.baidu.com/product/113 注册并获取
+BAIDU_TRANSLATE_APP_ID=your-app-id
+BAIDU_TRANSLATE_SECRET_KEY=your-secret-key
 ```
 
 4. **初始化数据库**

@@ -131,6 +131,31 @@ function initSchema() {
       fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // OpenSource trending table (GitHub Trending)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS opensource_trending (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      repo_full_name TEXT NOT NULL,
+      repo_name TEXT,
+      description TEXT,
+      language TEXT,
+      stars INTEGER DEFAULT 0,
+      stars_today INTEGER DEFAULT 0,
+      forks INTEGER DEFAULT 0,
+      url TEXT,
+      period TEXT DEFAULT 'today',
+      language_filter TEXT,
+      rank INTEGER,
+      fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(repo_full_name, period, language_filter)
+    )
+  `);
+  
+  // Create indexes
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_opensource_trending_period ON opensource_trending(period)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_opensource_trending_language ON opensource_trending(language_filter)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_opensource_trending_fetched_at ON opensource_trending(fetched_at)`);
 }
 
 // Migration function to update platform_accounts table CHECK constraint
@@ -620,6 +645,35 @@ export const hotDramaOps = {
     SELECT COUNT(*) as total FROM hot_dramas WHERE media_type = ?
   `),
 
+  // 搜索查询
+  searchByTitle: db.prepare(`
+    SELECT * FROM hot_dramas
+    WHERE title LIKE ?
+    ORDER BY 
+      CASE WHEN release_date IS NULL OR release_date = '' THEN 0 ELSE 1 END DESC,
+      release_date DESC,
+      fetched_at DESC
+    LIMIT ? OFFSET ?
+  `),
+
+  searchByTitleAndType: db.prepare(`
+    SELECT * FROM hot_dramas
+    WHERE title LIKE ? AND media_type = ?
+    ORDER BY 
+      CASE WHEN release_date IS NULL OR release_date = '' THEN 0 ELSE 1 END DESC,
+      release_date DESC,
+      fetched_at DESC
+    LIMIT ? OFFSET ?
+  `),
+
+  countSearch: db.prepare(`
+    SELECT COUNT(*) as total FROM hot_dramas WHERE title LIKE ?
+  `),
+
+  countSearchByType: db.prepare(`
+    SELECT COUNT(*) as total FROM hot_dramas WHERE title LIKE ? AND media_type = ?
+  `),
+
   // 检查标题是否已存在且有 TMDB 数据
   findByTitle: db.prepare(`
     SELECT title, tmdb_id, poster_path FROM hot_dramas WHERE title = ?
@@ -628,6 +682,56 @@ export const hotDramaOps = {
   deleteAll: db.prepare(`
     DELETE FROM hot_dramas
   `)
+};
+
+// OpenSource trending operations
+export const opensourceTrendingOps = {
+  // Upsert a trending project
+  upsert: db.prepare(`
+    INSERT INTO opensource_trending (repo_full_name, repo_name, description, language, stars, stars_today, forks, url, period, language_filter, rank)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(repo_full_name, period, language_filter) DO UPDATE SET
+      repo_name = excluded.repo_name,
+      description = excluded.description,
+      language = excluded.language,
+      stars = excluded.stars,
+      stars_today = excluded.stars_today,
+      forks = excluded.forks,
+      url = excluded.url,
+      rank = excluded.rank,
+      fetched_at = datetime('now')
+  `),
+
+  // Find by period and language
+  findByPeriodAndLanguage: db.prepare(`
+    SELECT * FROM opensource_trending
+    WHERE period = ? AND (language_filter = ? OR language_filter = 'all' OR ? = 'all')
+    ORDER BY rank ASC, fetched_at DESC
+  `),
+
+  // Find latest by period and language (today's data)
+  // If language = 'all', return all data; otherwise, only return matching language_filter
+  findLatest: db.prepare(`
+    SELECT * FROM opensource_trending
+    WHERE period = ? AND (? = 'all' OR language_filter = ?)
+    AND DATE(fetched_at) = DATE('now')
+    ORDER BY rank ASC
+  `),
+
+  // Delete old data (older than 7 days)
+  deleteOld: db.prepare(`
+    DELETE FROM opensource_trending WHERE fetched_at < datetime('now', '-7 days')
+  `),
+
+  // Delete by period and language before inserting new batch (delete today's data)
+  deleteByPeriodAndLanguage: db.prepare(`
+    DELETE FROM opensource_trending WHERE period = ? AND language_filter = ? AND DATE(fetched_at) = DATE('now')
+  `),
+
+  // Count by period
+  countByPeriod: db.prepare(`
+    SELECT period, COUNT(*) as count FROM opensource_trending GROUP BY period
+  `),
 };
 
 export default db;

@@ -147,7 +147,7 @@ export const hotTrendsApi = {
 
 // Hot Drama API
 export const hotDramaApi = {
-    getAll: (page: number = 1, limit: number = 30, mediaType?: 'movie' | 'tv') => {
+    getAll: (page: number = 1, limit: number = 30, mediaType?: 'movie' | 'tv', search?: string) => {
         const params = new URLSearchParams({
             page: page.toString(),
             limit: limit.toString(),
@@ -155,11 +155,29 @@ export const hotDramaApi = {
         if (mediaType) {
             params.append('media_type', mediaType);
         }
+        if (search && search.trim()) {
+            params.append('search', search.trim());
+        }
         return fetchApi(`/hot-drama?${params.toString()}`);
     },
 
     refresh: () =>
         fetchApi('/hot-drama/refresh', { method: 'POST' }),
+};
+
+// OpenSource API (GitHub Trending)
+export const opensourceApi = {
+    // 获取 GitHub Trending
+    getTrending: (period: 'today' | 'week' | 'month' = 'today', language: string = 'all') =>
+        fetchApi(`/opensource/trending?period=${period}&language=${language}`),
+
+    // 获取可用语言
+    getLanguages: () =>
+        fetchApi('/opensource/languages'),
+
+    // 强制刷新
+    refresh: () =>
+        fetchApi('/opensource/refresh', { method: 'POST' }),
 };
 
 // Maoyan API (猫眼数据)

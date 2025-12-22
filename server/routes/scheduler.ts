@@ -46,6 +46,16 @@ import {
     setMaoyanSchedulerInitialDelay,
     getMaoyanSchedulerInitialDelay
 } from '../services/schedulers/hotDramaSchedulerService.js';
+import { 
+    refreshOpenSourceData,
+    startOpenSourceScheduler,
+    stopOpenSourceScheduler,
+    isOpenSourceScraping,
+    setOpenSourceSchedulerInterval,
+    getOpenSourceSchedulerInterval,
+    setOpenSourceSchedulerInitialDelay,
+    getOpenSourceSchedulerInitialDelay
+} from '../services/schedulers/opensourceSchedulerService.js';
 
 const router = express.Router();
 
@@ -56,6 +66,7 @@ interface SchedulerConfig {
     hotTrends: { enabled: boolean; interval: number; initialDelay: number };
     hotDrama: { enabled: boolean; interval: number; initialDelay: number };
     maoyan: { enabled: boolean; interval: number; initialDelay: number };
+    opensource: { enabled: boolean; interval: number; initialDelay: number };
 }
 
 let schedulerConfig: SchedulerConfig = {
@@ -64,6 +75,7 @@ let schedulerConfig: SchedulerConfig = {
     hotTrends: { enabled: false, interval: 60, initialDelay: 1 },
     hotDrama: { enabled: false, interval: 1440, initialDelay: 1 },
     maoyan: { enabled: false, interval: 5, initialDelay: 0.5 }, // 5分钟刷新一次
+    opensource: { enabled: false, interval: 60, initialDelay: 1 }, // 60分钟刷新一次
 };
 
 // Get all scheduler status and config
@@ -92,6 +104,9 @@ router.get('/status', requireAuth, (req, res) => {
                 maoyan: {
                     running: isMaoyanScrapingNow(),
                 },
+                opensource: {
+                    running: isOpenSourceScraping(),
+                },
             },
         });
     } catch (error: any) {
@@ -103,7 +118,7 @@ router.get('/status', requireAuth, (req, res) => {
 // Update scheduler configuration
 router.post('/config', requireAuth, (req, res) => {
     try {
-        const { globalFocus, publicScraping, hotTrends, hotDrama, maoyan } = req.body;
+        const { globalFocus, publicScraping, hotTrends, hotDrama, maoyan, opensource } = req.body;
 
         if (globalFocus !== undefined) {
             schedulerConfig.globalFocus = { ...schedulerConfig.globalFocus, ...globalFocus };
@@ -165,6 +180,18 @@ router.post('/config', requireAuth, (req, res) => {
             }
         }
 
+        if (opensource !== undefined) {
+            schedulerConfig.opensource = { ...schedulerConfig.opensource, ...opensource };
+            if (schedulerConfig.opensource.enabled) {
+                stopOpenSourceScheduler();
+                setOpenSourceSchedulerInterval(schedulerConfig.opensource.interval);
+                setOpenSourceSchedulerInitialDelay(schedulerConfig.opensource.initialDelay || 1);
+                startOpenSourceScheduler(schedulerConfig.opensource.interval, schedulerConfig.opensource.initialDelay || 1);
+            } else {
+                stopOpenSourceScheduler();
+            }
+        }
+
         res.json({ success: true, config: schedulerConfig });
     } catch (error: any) {
         console.error('Error updating scheduler config:', error);
@@ -208,6 +235,14 @@ router.post('/trigger/:task', requireAuth, async (req, res) => {
                     res.json({ success: true, message: `Maoyan refresh triggered. Fetched ${total} items.` });
                 } else {
                     res.status(500).json({ success: false, error: maoyanResult.error || 'Failed to refresh' });
+                }
+                break;
+            case 'opensource':
+                const opensourceResult = await refreshOpenSourceData();
+                if (opensourceResult.success) {
+                    res.json({ success: true, message: `OpenSource refresh triggered. Fetched ${opensourceResult.count} items.` });
+                } else {
+                    res.status(500).json({ success: false, error: opensourceResult.error || 'Failed to refresh' });
                 }
                 break;
             default:
