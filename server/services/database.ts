@@ -116,7 +116,7 @@ function initSchema() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS hot_dramas (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT NOT NULL,
+      title TEXT NOT NULL UNIQUE,
       original_title TEXT,
       download_link TEXT,
       baidu_url TEXT,
@@ -128,8 +128,7 @@ function initSchema() {
       release_date TEXT,
       vote_average REAL,
       media_type TEXT,
-      fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(title, download_link)
+      fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 }
@@ -210,6 +209,7 @@ function migratePlatformAccountsTable() {
 }
 
 // Migration function to add baidu_url and quark_url columns to hot_dramas table
+// and update UNIQUE constraint to be based on title only
 function migrateHotDramasTable() {
   try {
     // Check if table exists
@@ -224,21 +224,71 @@ function migrateHotDramasTable() {
     const hasBaiduUrl = tableInfo2.some(col => col.name === 'baidu_url');
     const hasQuarkUrl = tableInfo2.some(col => col.name === 'quark_url');
 
-    if (hasBaiduUrl && hasQuarkUrl) {
-      // Already migrated
-      return;
+    // Check current table schema
+    const tableSchema = db.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='hot_dramas'`).get() as { sql: string } | undefined;
+    const hasTitleUnique = tableSchema?.sql.includes('title TEXT NOT NULL UNIQUE') || tableSchema?.sql.includes('UNIQUE(title)');
+
+    let needsMigration = false;
+
+    if (!hasBaiduUrl || !hasQuarkUrl || !hasTitleUnique) {
+      needsMigration = true;
+      console.log('[Database] Migrating hot_dramas table...');
     }
 
-    console.log('[Database] Migrating hot_dramas table to add baidu_url and quark_url columns...');
+    if (needsMigration) {
+      // SQLite doesn't support ALTER TABLE to modify UNIQUE constraints
+      // So we need to recreate the table
+      db.pragma('foreign_keys = OFF');
+      
+      try {
+        // Create new table with correct structure
+        db.exec(`
+          CREATE TABLE IF NOT EXISTS hot_dramas_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL UNIQUE,
+            original_title TEXT,
+            download_link TEXT,
+            baidu_url TEXT,
+            quark_url TEXT,
+            tmdb_id INTEGER,
+            poster_path TEXT,
+            backdrop_path TEXT,
+            overview TEXT,
+            release_date TEXT,
+            vote_average REAL,
+            media_type TEXT,
+            fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
 
-    if (!hasBaiduUrl) {
-      db.exec(`ALTER TABLE hot_dramas ADD COLUMN baidu_url TEXT`);
-    }
-    if (!hasQuarkUrl) {
-      db.exec(`ALTER TABLE hot_dramas ADD COLUMN quark_url TEXT`);
-    }
+        // Copy data from old table, handling duplicates by keeping the latest one
+        db.exec(`
+          INSERT INTO hot_dramas_new 
+          SELECT * FROM hot_dramas
+          WHERE id IN (
+            SELECT MAX(id) 
+            FROM hot_dramas 
+            GROUP BY title
+          )
+        `);
 
-    console.log('[Database] Migration completed successfully');
+        // Drop old table
+        db.exec(`DROP TABLE hot_dramas`);
+
+        // Rename new table
+        db.exec(`ALTER TABLE hot_dramas_new RENAME TO hot_dramas`);
+
+        console.log('[Database] Migration completed successfully');
+      } catch (error: any) {
+        console.error('[Database] Migration error:', error.message);
+        // Try to clean up
+        try {
+          db.exec(`DROP TABLE IF EXISTS hot_dramas_new`);
+        } catch {}
+      } finally {
+        db.pragma('foreign_keys = ON');
+      }
+    }
   } catch (error: any) {
     console.error('[Database] Migration error:', error.message);
   }
@@ -520,35 +570,45 @@ export const hotDramaOps = {
   upsert: db.prepare(`
     INSERT INTO hot_dramas (title, original_title, download_link, baidu_url, quark_url, tmdb_id, poster_path, backdrop_path, overview, release_date, vote_average, media_type)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(title, download_link) DO UPDATE SET
-      original_title = excluded.original_title,
-      baidu_url = excluded.baidu_url,
-      quark_url = excluded.quark_url,
-      tmdb_id = excluded.tmdb_id,
-      poster_path = excluded.poster_path,
-      backdrop_path = excluded.backdrop_path,
-      overview = excluded.overview,
-      release_date = excluded.release_date,
-      vote_average = excluded.vote_average,
-      media_type = excluded.media_type,
+    ON CONFLICT(title) DO UPDATE SET
+      original_title = COALESCE(excluded.original_title, original_title),
+      download_link = COALESCE(excluded.download_link, download_link),
+      baidu_url = COALESCE(excluded.baidu_url, baidu_url),
+      quark_url = COALESCE(excluded.quark_url, quark_url),
+      tmdb_id = COALESCE(excluded.tmdb_id, tmdb_id),
+      poster_path = COALESCE(excluded.poster_path, poster_path),
+      backdrop_path = COALESCE(excluded.backdrop_path, backdrop_path),
+      overview = COALESCE(excluded.overview, overview),
+      release_date = COALESCE(excluded.release_date, release_date),
+      vote_average = COALESCE(excluded.vote_average, vote_average),
+      media_type = COALESCE(excluded.media_type, media_type),
       fetched_at = datetime('now')
   `),
 
   findAll: db.prepare(`
     SELECT * FROM hot_dramas
-    ORDER BY fetched_at DESC
+    ORDER BY 
+      CASE WHEN release_date IS NULL OR release_date = '' THEN 0 ELSE 1 END DESC,
+      release_date DESC,
+      fetched_at DESC
   `),
 
   findAllPaginated: db.prepare(`
     SELECT * FROM hot_dramas
-    ORDER BY fetched_at DESC
+    ORDER BY 
+      CASE WHEN release_date IS NULL OR release_date = '' THEN 0 ELSE 1 END DESC,
+      release_date DESC,
+      fetched_at DESC
     LIMIT ? OFFSET ?
   `),
 
   findAllPaginatedByType: db.prepare(`
     SELECT * FROM hot_dramas
     WHERE media_type = ?
-    ORDER BY fetched_at DESC
+    ORDER BY 
+      CASE WHEN release_date IS NULL OR release_date = '' THEN 0 ELSE 1 END DESC,
+      release_date DESC,
+      fetched_at DESC
     LIMIT ? OFFSET ?
   `),
 

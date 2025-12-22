@@ -54,13 +54,9 @@ const HotDramaView: React.FC = () => {
       const data = await hotDramaApi.getAll(page, itemsPerPage, activeTab);
       
       if (data.items && data.items.length > 0) {
-        // Data is already filtered by media_type on the server, no need to filter again
-        // Sort by release_date in descending order (newest first)
-        const sortedData = [...data.items].sort((a, b) => {
-          const dateA = a.release_date ? new Date(a.release_date).getTime() : 0;
-          const dateB = b.release_date ? new Date(b.release_date).getTime() : 0;
-          return dateB - dateA; // Descending order
-        });
+        // Data is already filtered by media_type and sorted by release_date DESC on the server
+        // No need to sort again on the client side
+        const sortedData = data.items;
 
         if (append) {
           const elapsed = Date.now() - loadStartTime;
