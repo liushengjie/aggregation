@@ -125,9 +125,15 @@ function parseContent(content: string): Array<{ title: string; baiduUrl: string 
         }
         const afterBaidu = content.slice(baiduIndex, Math.min(blockEnd, baiduIndex + 500));
         
-        // 提取夸克链接
-        const quarkMatch = afterBaidu.match(/https?:\/\/pan\.quark\.cn\/s\/[A-Za-z0-9]+/);
-        const quarkUrl = quarkMatch ? quarkMatch[0] : null;
+        // 提取夸克链接 - 先在百度链接之后找
+        let quarkMatch = afterBaidu.match(/https?:\/\/pan\.quark\.cn\/s\/[A-Za-z0-9]+/);
+        let quarkUrl = quarkMatch ? quarkMatch[0] : null;
+        
+        // 如果后面没找到，在百度链接之前找（夸克链接可能在百度链接前面）
+        if (!quarkUrl) {
+            const quarkMatchBefore = beforeBaidu.match(/https?:\/\/pan\.quark\.cn\/s\/[A-Za-z0-9]+/);
+            quarkUrl = quarkMatchBefore ? quarkMatchBefore[0] : null;
+        }
         
         resources.push({
             title: name,
@@ -385,20 +391,53 @@ export const scrapeKDocs = async (url: string): Promise<ScrapedDrama[]> => {
                     title = title.split('（')[0].trim();
                 }
                 
-                // 往后找夸克链接
+                // 往后找夸克链接（到下一个资源或500字符内）
                 let blockEnd = allText.length;
                 if (i < baiduMatches.length - 1) {
                     blockEnd = baiduMatches[i + 1].index!;
                 }
-                const afterBaidu = allText.slice(baiduIndex, Math.min(blockEnd, baiduIndex + 300));
+                const afterBaidu = allText.slice(baiduIndex, Math.min(blockEnd, baiduIndex + 500));
+                
+                // 提取夸克链接 - 先在百度链接之后找
+                let quarkMatch = afterBaidu.match(/https?:\/\/pan\.quark\.cn\/s\/[A-Za-z0-9]+/);
+                let quarkUrl = quarkMatch ? quarkMatch[0] : null;
+                
+                // 如果后面没找到，在百度链接之前找（夸克链接可能在百度链接前面）
+                if (!quarkUrl) {
+                    const quarkMatchBefore = beforeBaidu.match(/https?:\/\/pan\.quark\.cn\/s\/[A-Za-z0-9]+/);
+                    quarkUrl = quarkMatchBefore ? quarkMatchBefore[0] : null;
+                }
                 
                 // 组合完整资源块
-                uniqueBlocks.push(title + " 百度链接: " + baiduUrl + " " + afterBaidu);
+                uniqueBlocks.push(JSON.stringify({ title, baiduUrl, quarkUrl }));
             }
             
             console.log(`[KDocs] 去重后共 ${uniqueBlocks.length} 个唯一资源`);
             
-            content = uniqueBlocks.join("\n");
+            // 解析 JSON 格式的资源块
+            const parsedResources: Array<{ title: string; baiduUrl: string | null; quarkUrl: string | null }> = [];
+            for (const block of uniqueBlocks) {
+                try {
+                    const parsed = JSON.parse(block);
+                    parsedResources.push(parsed);
+                } catch {
+                    // 忽略解析失败的块
+                }
+            }
+            
+            // 直接返回解析后的结果
+            const results: ScrapedDrama[] = parsedResources
+                .filter(res => res.baiduUrl || res.quarkUrl)
+                .map(res => ({
+                    title: res.title,
+                    download_link: res.baiduUrl || res.quarkUrl || "",
+                    baiduUrl: res.baiduUrl || undefined,
+                    quarkUrl: res.quarkUrl || undefined
+                }));
+            
+            console.log(`[KDocs] Found ${results.length} items`);
+            await browser.close();
+            return results;
         } else {
             console.log("[KDocs] 未找到滚动容器，使用默认方式");
             // 额外等待确保所有内容都已渲染

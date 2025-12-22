@@ -1,8 +1,9 @@
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Sparkles, Download, Star, Calendar, Film, Tv, Menu, ExternalLink, Loader2, Cloud } from 'lucide-react';
+import { Download, Star, Calendar, Film, Tv, Menu, Loader2, Cloud } from 'lucide-react';
 import Masonry from 'react-masonry-css';
 import { hotDramaApi } from '../api/api';
+import BoxOfficePanel from '../components/BoxOfficePanel';
 
 interface HotDrama {
   id: number;
@@ -22,7 +23,29 @@ interface HotDrama {
   current_episode?: number; // 当前更新到第几集（仅电视剧）
 }
 
-const MOCK_DATA: HotDrama[] = [];
+
+
+// 格式化日期函数
+const formatDate = (dateString: string | null): string | null => {
+  if (!dateString) return null;
+  
+  try {
+    const date = new Date(dateString);
+    // 检查日期是否有效
+    if (isNaN(date.getTime())) {
+      return null;
+    }
+    
+    // 格式化为中文日期：YYYY年M月D日
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    
+    return `${year}年${month}月${day}日`;
+  } catch (e) {
+    return null;
+  }
+};
 
 const HotDramaView: React.FC = () => {
   const [dramas, setDramas] = useState<HotDrama[]>([]);
@@ -144,7 +167,7 @@ const HotDramaView: React.FC = () => {
 
   return (
     <div className="w-full h-full flex flex-col animate-in fade-in duration-500 pb-4">
-      <header className="ipad-glass rounded-none lg:rounded-md mb-0 lg:mb-4 px-3 lg:px-4 py-2 lg:py-3 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 lg:gap-4 shrink-0 z-40 border-b lg:border border-white/60 glass-shimmer">
+      <header className="ipad-glass rounded-none lg:rounded-md mb-0 lg:mb-4 px-3 lg:px-4 py-2 lg:py-3 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 lg:gap-4 shrink-0 z-40 border-b lg:border border-white/60 glass-shimmer hidden lg:flex">
         {/* Mobile: Top row */}
         <div className="flex items-center justify-between w-full lg:hidden">
           <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -189,53 +212,91 @@ const HotDramaView: React.FC = () => {
 
       </header>
 
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto custom-scrollbar px-3 lg:px-0 lg:pr-1 pt-3 lg:pt-0">
-        <div className="space-y-4">
-          {/* Tabs - 电视剧在前 */}
-          <div className="mb-4 flex gap-2 border-b border-white/40">
-            <button
-              onClick={() => {
-                setActiveTab('tv');
-                setCurrentPage(1);
-                setHasMore(true);
-                setDramas([]);
-              }}
-              className={`px-4 py-2 text-sm font-bold transition-colors relative ${
-                activeTab === 'tv'
-                  ? 'text-rose-600'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <Tv size={16} />
-                电视剧
-              </div>
-              {activeTab === 'tv' && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-rose-600"></div>
-              )}
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('movie');
-                setCurrentPage(1);
-                setHasMore(true);
-                setDramas([]);
-              }}
-              className={`px-4 py-2 text-sm font-bold transition-colors relative ${
-                activeTab === 'movie'
-                  ? 'text-rose-600'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <Film size={16} />
-                电影
-              </div>
-              {activeTab === 'movie' && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-rose-600"></div>
-              )}
-            </button>
+      {/* 移动端顶部标题 */}
+      <div className="lg:hidden flex items-center gap-2 px-3 py-3 border-b border-white/40 bg-white/30 backdrop-blur-md shrink-0">
+        <button
+          onClick={() => (window as any).toggleSidebar?.()}
+          className="p-2 -ml-2 text-slate-600 hover:bg-white/50 rounded-md transition-colors"
+        >
+          <Menu size={20} />
+        </button>
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-rose-600 rounded-md flex items-center justify-center text-white shadow-md shadow-rose-200/50">
+            <Film size={16} strokeWidth={2.5} />
           </div>
+          <div>
+            <h2 className="text-sm font-black text-slate-800 tracking-tight leading-none">
+              热门影视
+            </h2>
+            <p className="text-[9px] font-bold text-slate-500 mt-0.5 uppercase tracking-widest">
+              Hot Dramas & Movies
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* 主内容区域 - 左右布局 */}
+      <div className="flex-1 flex gap-4 overflow-hidden px-3 lg:px-0 pt-3 lg:pt-0">
+        {/* 左侧排名面板 - 桌面端占据四分之一 */}
+        <div className="hidden lg:flex lg:flex-col lg:w-1/4 shrink-0 h-full">
+          <BoxOfficePanel />
+        </div>
+
+        {/* 右侧热剧内容 */}
+        <div className="flex-1 flex flex-col h-full overflow-hidden">
+          {/* 内容卡片 */}
+          <div className="flex-1 flex flex-col bg-white/40 backdrop-blur-md rounded-lg border border-white/60 overflow-hidden">
+            {/* 头部标题 - 简洁风格 */}
+            <div className="hidden lg:flex items-center px-4 py-3 border-b border-white/60 bg-gradient-to-r from-rose-50/80 to-pink-50/80">
+              <div className="flex items-center gap-2">
+                <Film size={18} className="text-rose-500" />
+                <h2 className="text-sm font-black text-slate-800">热门资源</h2>
+              </div>
+            </div>
+
+            {/* Tabs - 与左侧样式一致 */}
+            <div className="flex flex-col border-b border-white/60 bg-white/30 shrink-0">
+              <div className="flex overflow-x-auto scrollbar-hide">
+                <button
+                  onClick={() => {
+                    setActiveTab('tv');
+                    setCurrentPage(1);
+                    setHasMore(true);
+                    setDramas([]);
+                  }}
+                  className={`flex-1 min-w-[80px] px-3 py-2.5 text-xs font-bold transition-all whitespace-nowrap ${
+                    activeTab === 'tv'
+                      ? 'text-rose-600 bg-white/60 border-b-2 border-rose-600'
+                      : 'text-slate-600 hover:text-slate-800 hover:bg-white/40'
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    <Tv size={14} />
+                    <span>电视剧</span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => {
+                    setActiveTab('movie');
+                    setCurrentPage(1);
+                    setHasMore(true);
+                    setDramas([]);
+                  }}
+                  className={`flex-1 min-w-[80px] px-3 py-2.5 text-xs font-bold transition-all whitespace-nowrap ${
+                    activeTab === 'movie'
+                      ? 'text-rose-600 bg-white/60 border-b-2 border-rose-600'
+                      : 'text-slate-600 hover:text-slate-800 hover:bg-white/40'
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    <Film size={14} />
+                    <span>电影</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto custom-scrollbar p-3">
 
           {loading && dramas.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 space-y-3 ipad-glass rounded-md border border-white/60">
@@ -271,10 +332,10 @@ const HotDramaView: React.FC = () => {
                         <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/20 to-transparent opacity-50 group-hover:opacity-70 transition-opacity" />
 
                         {/* Rating Badge */}
-                        {drama.vote_average && (
+                        {drama.vote_average != null && typeof drama.vote_average === 'number' && (
                           <div className="absolute top-2 right-2 flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-500 text-white text-[10px] font-bold rounded shadow-lg">
                             <Star size={10} fill="currentColor" />
-                            {drama.vote_average.toFixed(1)}
+                            {Number(drama.vote_average).toFixed(1)}
                           </div>
                         )}
                       </div>
@@ -298,14 +359,10 @@ const HotDramaView: React.FC = () => {
                         )}
 
                         <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium mb-2">
-                          {drama.release_date && (
+                          {formatDate(drama.release_date) && (
                             <div className="flex items-center gap-1">
                               <Calendar size={10} />
-                              {new Date(drama.release_date).toLocaleDateString('zh-CN', {
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric'
-                              })}
+                              {formatDate(drama.release_date)}
                             </div>
                           )}
                           {drama.media_type === 'tv' && drama.current_episode && (
@@ -316,16 +373,16 @@ const HotDramaView: React.FC = () => {
                         </div>
 
                         {/* Download Buttons */}
-                        <div className="mt-auto flex flex-col gap-2">
+                        <div className="mt-auto flex flex-wrap gap-1.5">
                           {drama.baidu_url && (
                             <a
                               href={drama.baidu_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="w-full py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold uppercase tracking-wider rounded-md transition-colors flex items-center justify-center gap-1.5 shadow-md shadow-blue-900/20 group-hover:shadow-blue-600/20"
+                              className="flex-1 min-w-0 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[9px] font-bold uppercase tracking-wider rounded-md transition-colors flex items-center justify-center gap-1 shadow-md shadow-blue-900/20"
                             >
-                              <Cloud size={12} />
-                              百度网盘
+                              <Cloud size={10} />
+                              百度
                             </a>
                           )}
                           {drama.quark_url && (
@@ -333,10 +390,10 @@ const HotDramaView: React.FC = () => {
                               href={drama.quark_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="w-full py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-bold uppercase tracking-wider rounded-md transition-colors flex items-center justify-center gap-1.5 shadow-md shadow-purple-900/20 group-hover:shadow-purple-600/20"
+                              className="flex-1 min-w-0 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-[9px] font-bold uppercase tracking-wider rounded-md transition-colors flex items-center justify-center gap-1 shadow-md shadow-purple-900/20"
                             >
-                              <Cloud size={12} />
-                              夸克网盘
+                              <Cloud size={10} />
+                              夸克
                             </a>
                           )}
                           {!drama.baidu_url && !drama.quark_url && drama.download_link && (
@@ -344,10 +401,10 @@ const HotDramaView: React.FC = () => {
                               href={drama.download_link}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="w-full py-1.5 bg-slate-900 hover:bg-rose-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-md transition-colors flex items-center justify-center gap-1.5 shadow-md shadow-slate-900/20 group-hover:shadow-rose-600/20"
+                              className="flex-1 py-1.5 bg-slate-900 hover:bg-rose-600 text-white text-[9px] font-bold uppercase tracking-wider rounded-md transition-colors flex items-center justify-center gap-1 shadow-md shadow-slate-900/20"
                             >
-                              <Download size={12} />
-                              Download
+                              <Download size={10} />
+                              下载
                             </a>
                           )}
                         </div>
@@ -381,6 +438,8 @@ const HotDramaView: React.FC = () => {
               )}
             </>
           )}
+            </div>
+          </div>
         </div>
       </div>
     </div>

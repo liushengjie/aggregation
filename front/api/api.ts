@@ -162,6 +162,41 @@ export const hotDramaApi = {
         fetchApi('/hot-drama/refresh', { method: 'POST' }),
 };
 
+// Maoyan API (猫眼数据)
+export const maoyanApi = {
+    // 获取所有数据
+    getAll: (forceRefresh: boolean = false) =>
+        fetchApi(`/maoyan${forceRefresh ? '?refresh=true' : ''}`),
+
+    // 获取票房数据
+    getBoxOffice: () =>
+        fetchApi('/maoyan/box-office'),
+
+    // 获取即将上映
+    getComing: () =>
+        fetchApi('/maoyan/coming'),
+
+    // 获取电视剧排行
+    getTvRanking: () =>
+        fetchApi('/maoyan/tv'),
+
+    // 获取网络剧排行
+    getWebSeriesRanking: () =>
+        fetchApi('/maoyan/web-series'),
+
+    // 获取综艺排行
+    getVarietyRanking: () =>
+        fetchApi('/maoyan/variety'),
+
+    // 获取缓存状态
+    getStatus: () =>
+        fetchApi('/maoyan/status'),
+
+    // 强制刷新
+    refresh: () =>
+        fetchApi('/maoyan/refresh', { method: 'POST' }),
+};
+
 // Scheduler API
 export const schedulerApi = {
     getStatus: () =>

@@ -620,6 +620,11 @@ export const hotDramaOps = {
     SELECT COUNT(*) as total FROM hot_dramas WHERE media_type = ?
   `),
 
+  // 检查标题是否已存在且有 TMDB 数据
+  findByTitle: db.prepare(`
+    SELECT title, tmdb_id, poster_path FROM hot_dramas WHERE title = ?
+  `),
+
   deleteAll: db.prepare(`
     DELETE FROM hot_dramas
   `)

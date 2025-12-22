@@ -11,6 +11,7 @@ import imageProxyRouter from './routes/imageProxy.js';
 import hotTrendsRouter from './routes/hotTrends.js';
 import hotDramaRouter from './routes/hotDrama.js';
 import schedulerRouter from './routes/scheduler.js';
+import maoyanRouter from './routes/maoyan.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -48,6 +49,7 @@ app.use('/api/image', imageProxyRouter);
 app.use('/api/hot-trends', hotTrendsRouter);
 app.use('/api/hot-drama', hotDramaRouter);
 app.use('/api/scheduler', schedulerRouter);
+app.use('/api/maoyan', maoyanRouter);
 // Public items routes are now under /api/global-focus/public
 
 // Health check
@@ -77,15 +79,8 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
     res.status(500).json({ error: 'Internal server error' });
 });
 
-// Import and start scheduler
-import { startScheduler, startPublicScrapingScheduler } from './services/schedulers/globalFocusSchedulerService.js';
-import { startHotTrendScheduler } from './services/schedulers/hotTrendSchedulerService.js';
-import { startHotDramaScheduler } from './services/schedulers/hotDramaSchedulerService.js';
-
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    // startScheduler();
-    // startHotTrendScheduler();
-    // startPublicScrapingScheduler(30);
-    startHotDramaScheduler(); // Start hot drama scheduler (runs once per day at 2:00 AM)
+    console.log(`[Scheduler] All schedulers are controlled via frontend settings page`);
+    // Schedulers will be started/stopped via /api/scheduler/config endpoint
 });

@@ -137,6 +137,7 @@ export async function scrapeAllPlatforms(): Promise<void> {
 
 // Scheduler interval (default: 60 minutes)
 let SCRAPE_INTERVAL = 60 * 60 * 1000; // 60 minutes
+let INITIAL_DELAY = 1 * 60 * 1000; // Default: 1 minute
 let schedulerInterval: NodeJS.Timeout | null = null;
 
 /**
@@ -147,7 +148,19 @@ export function setHotTrendSchedulerInterval(intervalMinutes: number): void {
     // Restart scheduler if running
     if (schedulerInterval) {
         stopHotTrendScheduler();
-        startHotTrendScheduler();
+        startHotTrendScheduler(intervalMinutes, INITIAL_DELAY / 1000 / 60);
+    }
+}
+
+/**
+ * Set the initial delay (in minutes)
+ */
+export function setHotTrendSchedulerInitialDelay(initialDelayMinutes: number): void {
+    INITIAL_DELAY = initialDelayMinutes * 60 * 1000;
+    // Restart scheduler if running
+    if (schedulerInterval) {
+        stopHotTrendScheduler();
+        startHotTrendScheduler(SCRAPE_INTERVAL / 1000 / 60, initialDelayMinutes);
     }
 }
 
@@ -159,9 +172,16 @@ export function getHotTrendSchedulerInterval(): number {
 }
 
 /**
+ * Get the current initial delay (in minutes)
+ */
+export function getHotTrendSchedulerInitialDelay(): number {
+    return INITIAL_DELAY / 1000 / 60;
+}
+
+/**
  * Start the hot trend scheduler
  */
-export function startHotTrendScheduler(intervalMinutes?: number): void {
+export function startHotTrendScheduler(intervalMinutes?: number, initialDelayMinutes?: number): void {
     if (schedulerInterval) {
         console.log('[HotTrendScheduler] Scheduler already running');
         return;
@@ -171,17 +191,21 @@ export function startHotTrendScheduler(intervalMinutes?: number): void {
         SCRAPE_INTERVAL = intervalMinutes * 60 * 1000;
     }
 
-    console.log(`[HotTrendScheduler] Starting scheduler (interval: ${SCRAPE_INTERVAL / 1000 / 60} minutes)`);
+    if (initialDelayMinutes !== undefined) {
+        INITIAL_DELAY = initialDelayMinutes * 60 * 1000;
+    }
 
-    // Run first scrape after 60 seconds (give server time to start)
+    console.log(`[HotTrendScheduler] Starting scheduler (initial delay: ${INITIAL_DELAY / 1000 / 60} minutes, interval: ${SCRAPE_INTERVAL / 1000 / 60} minutes)`);
+
+    // Schedule first run after initial delay
     setTimeout(() => {
         scrapeAllPlatforms();
-    }, 60000);
-
-    // Then run at specified interval
-    schedulerInterval = setInterval(() => {
-        scrapeAllPlatforms();
-    }, SCRAPE_INTERVAL);
+        
+        // Then run at specified interval
+        schedulerInterval = setInterval(() => {
+            scrapeAllPlatforms();
+        }, SCRAPE_INTERVAL);
+    }, INITIAL_DELAY);
 }
 
 /**

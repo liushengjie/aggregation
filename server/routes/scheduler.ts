@@ -8,71 +8,62 @@ import {
     stopScheduler,
     setSchedulerInterval,
     getSchedulerInterval,
+    setSchedulerInitialDelay,
+    getSchedulerInitialDelay,
     startPublicScrapingScheduler,
-    stopPublicScrapingScheduler
+    stopPublicScrapingScheduler,
+    setPublicScrapingSchedulerInterval,
+    getPublicScrapingSchedulerInterval,
+    setPublicScrapingSchedulerInitialDelay,
+    getPublicScrapingSchedulerInitialDelay
 } from '../services/schedulers/globalFocusSchedulerService.js';
 import { 
     scrapeAllPlatforms as scrapeHotTrends,
     startHotTrendScheduler,
     stopHotTrendScheduler,
-    getScrapingPlatforms as getHotTrendScrapingPlatforms
+    getScrapingPlatforms as getHotTrendScrapingPlatforms,
+    setHotTrendSchedulerInterval,
+    getHotTrendSchedulerInterval,
+    setHotTrendSchedulerInitialDelay,
+    getHotTrendSchedulerInitialDelay
 } from '../services/schedulers/hotTrendSchedulerService.js';
 import { 
     refreshHotDramaData,
     startHotDramaScheduler,
     stopHotDramaScheduler,
     isHotDramaScraping,
-    setHotDramaSchedulerHour,
-    getHotDramaSchedulerHour
+    setHotDramaSchedulerInterval,
+    getHotDramaSchedulerInterval,
+    setHotDramaSchedulerInitialDelay,
+    getHotDramaSchedulerInitialDelay,
+    // 猫眼相关
+    refreshMaoyanData,
+    startMaoyanScheduler,
+    stopMaoyanScheduler,
+    isMaoyanScrapingNow,
+    setMaoyanSchedulerInterval,
+    getMaoyanSchedulerInterval,
+    setMaoyanSchedulerInitialDelay,
+    getMaoyanSchedulerInitialDelay
 } from '../services/schedulers/hotDramaSchedulerService.js';
-import {
-    startHotTrendScheduler,
-    stopHotTrendScheduler,
-    setHotTrendSchedulerInterval,
-    getHotTrendSchedulerInterval
-} from '../services/schedulers/hotTrendSchedulerService.js';
 
 const router = express.Router();
 
-// Scheduler configurations (stored in memory, can be persisted to DB later)
+// Scheduler configurations
 interface SchedulerConfig {
-    globalFocus: {
-        enabled: boolean;
-        interval: number; // minutes
-    };
-    publicScraping: {
-        enabled: boolean;
-        interval: number; // minutes
-    };
-    hotTrends: {
-        enabled: boolean;
-        interval: number; // minutes
-    };
-    hotDrama: {
-        enabled: boolean;
-        interval: number; // hours (for daily schedule)
-        scheduleHour: number; // hour of day (0-23)
-    };
+    globalFocus: { enabled: boolean; interval: number; initialDelay: number };
+    publicScraping: { enabled: boolean; interval: number; initialDelay: number };
+    hotTrends: { enabled: boolean; interval: number; initialDelay: number };
+    hotDrama: { enabled: boolean; interval: number; initialDelay: number };
+    maoyan: { enabled: boolean; interval: number; initialDelay: number };
 }
 
 let schedulerConfig: SchedulerConfig = {
-    globalFocus: {
-        enabled: false,
-        interval: 30, // 30 minutes
-    },
-    publicScraping: {
-        enabled: false,
-        interval: 30, // 30 minutes
-    },
-    hotTrends: {
-        enabled: false,
-        interval: 60, // 60 minutes (1 hour)
-    },
-    hotDrama: {
-        enabled: true,
-        interval: 24, // 24 hours (1 day)
-        scheduleHour: 2, // 2:00 AM
-    },
+    globalFocus: { enabled: false, interval: 30, initialDelay: 1 },
+    publicScraping: { enabled: false, interval: 30, initialDelay: 1 },
+    hotTrends: { enabled: false, interval: 60, initialDelay: 1 },
+    hotDrama: { enabled: false, interval: 1440, initialDelay: 1 },
+    maoyan: { enabled: false, interval: 5, initialDelay: 0.5 }, // 5分钟刷新一次
 };
 
 // Get all scheduler status and config
@@ -89,7 +80,7 @@ router.get('/status', requireAuth, (req, res) => {
                     syncingPlatforms: syncingPlatforms,
                 },
                 publicScraping: {
-                    running: false, // TODO: track public scraping status
+                    running: false,
                 },
                 hotTrends: {
                     running: hotTrendScraping.length > 0,
@@ -97,6 +88,9 @@ router.get('/status', requireAuth, (req, res) => {
                 },
                 hotDrama: {
                     running: isHotDramaScraping(),
+                },
+                maoyan: {
+                    running: isMaoyanScrapingNow(),
                 },
             },
         });
@@ -109,64 +103,65 @@ router.get('/status', requireAuth, (req, res) => {
 // Update scheduler configuration
 router.post('/config', requireAuth, (req, res) => {
     try {
-        const { globalFocus, publicScraping, hotTrends, hotDrama } = req.body;
+        const { globalFocus, publicScraping, hotTrends, hotDrama, maoyan } = req.body;
 
         if (globalFocus !== undefined) {
-            schedulerConfig.globalFocus = {
-                ...schedulerConfig.globalFocus,
-                ...globalFocus,
-            };
-            // Restart scheduler if config changed
+            schedulerConfig.globalFocus = { ...schedulerConfig.globalFocus, ...globalFocus };
             if (schedulerConfig.globalFocus.enabled) {
                 stopScheduler();
                 setSchedulerInterval(schedulerConfig.globalFocus.interval);
-                startScheduler(schedulerConfig.globalFocus.interval);
+                setSchedulerInitialDelay(schedulerConfig.globalFocus.initialDelay || 1);
+                startScheduler(schedulerConfig.globalFocus.interval, schedulerConfig.globalFocus.initialDelay || 1);
             } else {
                 stopScheduler();
             }
         }
 
         if (publicScraping !== undefined) {
-            schedulerConfig.publicScraping = {
-                ...schedulerConfig.publicScraping,
-                ...publicScraping,
-            };
-            // Restart scheduler if config changed
+            schedulerConfig.publicScraping = { ...schedulerConfig.publicScraping, ...publicScraping };
             if (schedulerConfig.publicScraping.enabled) {
                 stopPublicScrapingScheduler();
-                startPublicScrapingScheduler(schedulerConfig.publicScraping.interval);
+                setPublicScrapingSchedulerInterval(schedulerConfig.publicScraping.interval);
+                setPublicScrapingSchedulerInitialDelay(schedulerConfig.publicScraping.initialDelay || 1);
+                startPublicScrapingScheduler(schedulerConfig.publicScraping.interval, schedulerConfig.publicScraping.initialDelay || 1);
             } else {
                 stopPublicScrapingScheduler();
             }
         }
 
         if (hotTrends !== undefined) {
-            schedulerConfig.hotTrends = {
-                ...schedulerConfig.hotTrends,
-                ...hotTrends,
-            };
-            // Restart scheduler if config changed
+            schedulerConfig.hotTrends = { ...schedulerConfig.hotTrends, ...hotTrends };
             if (schedulerConfig.hotTrends.enabled) {
                 stopHotTrendScheduler();
                 setHotTrendSchedulerInterval(schedulerConfig.hotTrends.interval);
-                startHotTrendScheduler(schedulerConfig.hotTrends.interval);
+                setHotTrendSchedulerInitialDelay(schedulerConfig.hotTrends.initialDelay || 1);
+                startHotTrendScheduler(schedulerConfig.hotTrends.interval, schedulerConfig.hotTrends.initialDelay || 1);
             } else {
                 stopHotTrendScheduler();
             }
         }
 
         if (hotDrama !== undefined) {
-            schedulerConfig.hotDrama = {
-                ...schedulerConfig.hotDrama,
-                ...hotDrama,
-            };
-            // Restart scheduler if config changed
+            schedulerConfig.hotDrama = { ...schedulerConfig.hotDrama, ...hotDrama };
             if (schedulerConfig.hotDrama.enabled) {
                 stopHotDramaScheduler();
-                setHotDramaSchedulerHour(schedulerConfig.hotDrama.scheduleHour);
-                startHotDramaScheduler(schedulerConfig.hotDrama.scheduleHour);
+                setHotDramaSchedulerInterval(schedulerConfig.hotDrama.interval);
+                setHotDramaSchedulerInitialDelay(schedulerConfig.hotDrama.initialDelay || 1);
+                startHotDramaScheduler(schedulerConfig.hotDrama.interval, schedulerConfig.hotDrama.initialDelay || 1);
             } else {
                 stopHotDramaScheduler();
+            }
+        }
+
+        if (maoyan !== undefined) {
+            schedulerConfig.maoyan = { ...schedulerConfig.maoyan, ...maoyan };
+            if (schedulerConfig.maoyan.enabled) {
+                stopMaoyanScheduler();
+                setMaoyanSchedulerInterval(schedulerConfig.maoyan.interval);
+                setMaoyanSchedulerInitialDelay(schedulerConfig.maoyan.initialDelay || 0.5);
+                startMaoyanScheduler(schedulerConfig.maoyan.interval, schedulerConfig.maoyan.initialDelay || 0.5);
+            } else {
+                stopMaoyanScheduler();
             }
         }
 
@@ -196,11 +191,23 @@ router.post('/trigger/:task', requireAuth, async (req, res) => {
                 res.json({ success: true, message: 'Hot trends scraping triggered' });
                 break;
             case 'hot-drama':
-                const result = await refreshHotDramaData();
-                if (result.success) {
-                    res.json({ success: true, message: `Hot drama refresh triggered. Processed ${result.count} items.` });
+                const dramaResult = await refreshHotDramaData();
+                if (dramaResult.success) {
+                    res.json({ success: true, message: `Hot drama refresh triggered. Processed ${dramaResult.count} items.` });
                 } else {
-                    res.status(500).json({ success: false, error: result.error || 'Failed to refresh' });
+                    res.status(500).json({ success: false, error: dramaResult.error || 'Failed to refresh' });
+                }
+                break;
+            case 'maoyan':
+                const maoyanResult = await refreshMaoyanData();
+                if (maoyanResult.success) {
+                    const total = maoyanResult.data ? 
+                        maoyanResult.data.boxOffice.length + maoyanResult.data.calendar.length + 
+                        maoyanResult.data.tvRanking.length + maoyanResult.data.webSeriesRanking.length + 
+                        maoyanResult.data.varietyRanking.length : 0;
+                    res.json({ success: true, message: `Maoyan refresh triggered. Fetched ${total} items.` });
+                } else {
+                    res.status(500).json({ success: false, error: maoyanResult.error || 'Failed to refresh' });
                 }
                 break;
             default:
@@ -213,4 +220,3 @@ router.post('/trigger/:task', requireAuth, async (req, res) => {
 });
 
 export default router;
-

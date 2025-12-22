@@ -23,10 +23,11 @@ import {
 } from 'lucide-react';
 
 interface SchedulerConfig {
-  globalFocus: { enabled: boolean; interval: number };
-  publicScraping: { enabled: boolean; interval: number };
-  hotTrends: { enabled: boolean; interval: number };
-  hotDrama: { enabled: boolean; interval: number; scheduleHour: number };
+  globalFocus: { enabled: boolean; interval: number; initialDelay: number };
+  publicScraping: { enabled: boolean; interval: number; initialDelay: number };
+  hotTrends: { enabled: boolean; interval: number; initialDelay: number };
+  hotDrama: { enabled: boolean; interval: number; initialDelay: number };
+  maoyan: { enabled: boolean; interval: number; initialDelay: number };
 }
 
 interface SchedulerStatus {
@@ -34,6 +35,7 @@ interface SchedulerStatus {
   publicScraping: { running: boolean };
   hotTrends: { running: boolean; scrapingPlatforms: string[] };
   hotDrama: { running: boolean };
+  maoyan: { running: boolean };
 }
 
 const SettingsView: React.FC = () => {
@@ -67,9 +69,8 @@ const SettingsView: React.FC = () => {
       const data = await schedulerApi.getStatus();
       setSchedulerConfig(data.config);
       setSchedulerStatus(data.status);
-      if (!localConfig) {
-        setLocalConfig(data.config);
-      }
+      // Always sync localConfig with server config
+      setLocalConfig(data.config);
     } catch (error) {
       console.error('Failed to load scheduler data:', error);
     }
@@ -196,7 +197,7 @@ const SettingsView: React.FC = () => {
                       立即执行
                     </button>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-3 gap-4">
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">启用</label>
                       <label className="flex items-center gap-2 cursor-pointer">
@@ -208,6 +209,16 @@ const SettingsView: React.FC = () => {
                         />
                         <span className="text-xs font-medium text-slate-700">启用定时采集</span>
                       </label>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">初次启动（分钟）</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={localConfig.publicScraping.initialDelay || 1}
+                        onChange={(e) => handleConfigChange('publicScraping', 'initialDelay', parseInt(e.target.value) || 1)}
+                        className="w-full bg-white/50 border border-slate-200 rounded-md px-3 py-2 text-sm font-bold focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/10 transition-all outline-none"
+                      />
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">间隔（分钟）</label>
@@ -250,7 +261,7 @@ const SettingsView: React.FC = () => {
                       </button>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-3 gap-4">
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">启用</label>
                       <label className="flex items-center gap-2 cursor-pointer">
@@ -262,6 +273,16 @@ const SettingsView: React.FC = () => {
                         />
                         <span className="text-xs font-medium text-slate-700">启用定时采集</span>
                       </label>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">初次启动（分钟）</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={localConfig.hotTrends.initialDelay || 1}
+                        onChange={(e) => handleConfigChange('hotTrends', 'initialDelay', parseInt(e.target.value) || 1)}
+                        className="w-full bg-white/50 border border-slate-200 rounded-md px-3 py-2 text-sm font-bold focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/10 transition-all outline-none"
+                      />
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">间隔（分钟）</label>
@@ -304,7 +325,7 @@ const SettingsView: React.FC = () => {
                       </button>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-3 gap-4">
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">启用</label>
                       <label className="flex items-center gap-2 cursor-pointer">
@@ -318,13 +339,87 @@ const SettingsView: React.FC = () => {
                       </label>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">执行时间（小时）</label>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">初次启动（分钟）</label>
                       <input
                         type="number"
                         min="0"
-                        max="23"
-                        value={localConfig.hotDrama.scheduleHour}
-                        onChange={(e) => handleConfigChange('hotDrama', 'scheduleHour', parseInt(e.target.value) || 2)}
+                        value={localConfig.hotDrama.initialDelay || 1}
+                        onChange={(e) => handleConfigChange('hotDrama', 'initialDelay', parseInt(e.target.value) || 1)}
+                        className="w-full bg-white/50 border border-slate-200 rounded-md px-3 py-2 text-sm font-bold focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/10 transition-all outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">间隔（分钟）</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={localConfig.hotDrama.interval}
+                        onChange={(e) => handleConfigChange('hotDrama', 'interval', parseInt(e.target.value) || 1440)}
+                        className="w-full bg-white/50 border border-slate-200 rounded-md px-3 py-2 text-sm font-bold focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/10 transition-all outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Maoyan Scheduler */}
+                <div className="p-4 bg-white/50 rounded-md border border-slate-200/50 backdrop-blur-sm">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h4 className="text-sm font-black text-slate-800">猫眼排行榜</h4>
+                      <p className="text-xs text-slate-500 mt-1">采集猫眼票房、电视剧、网络剧、综艺排行</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {schedulerStatus.maoyan?.running && (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-green-50 text-green-600 rounded text-[10px] font-bold">
+                          <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+                          运行中
+                        </div>
+                      )}
+                      <button
+                        onClick={() => handleTrigger('maoyan')}
+                        disabled={triggering === 'maoyan'}
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-md transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        {triggering === 'maoyan' ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <Play size={14} />
+                        )}
+                        立即执行
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">启用</label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={localConfig.maoyan?.enabled || false}
+                          onChange={(e) => handleConfigChange('maoyan', 'enabled', e.target.checked)}
+                          className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                        />
+                        <span className="text-xs font-medium text-slate-700">启用定时采集</span>
+                      </label>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">初次启动（分钟）</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={localConfig.maoyan?.initialDelay || 0.5}
+                        onChange={(e) => handleConfigChange('maoyan', 'initialDelay', parseFloat(e.target.value) || 0.5)}
+                        className="w-full bg-white/50 border border-slate-200 rounded-md px-3 py-2 text-sm font-bold focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/10 transition-all outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">间隔（分钟）</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={localConfig.maoyan?.interval || 5}
+                        onChange={(e) => handleConfigChange('maoyan', 'interval', parseInt(e.target.value) || 5)}
                         className="w-full bg-white/50 border border-slate-200 rounded-md px-3 py-2 text-sm font-bold focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/10 transition-all outline-none"
                       />
                     </div>

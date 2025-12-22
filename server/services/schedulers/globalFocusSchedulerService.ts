@@ -82,6 +82,7 @@ async function syncAllConnectedAccounts(): Promise<void> {
 
 // Sync interval in milliseconds (default: 30 minutes)
 let SYNC_INTERVAL = 30 * 60 * 1000;
+let INITIAL_DELAY = 1 * 60 * 1000; // Default: 1 minute
 let schedulerInterval: NodeJS.Timeout | null = null;
 
 /**
@@ -92,7 +93,19 @@ export function setSchedulerInterval(intervalMinutes: number): void {
     // Restart scheduler if running
     if (schedulerInterval) {
         stopScheduler();
-        startScheduler(intervalMinutes);
+        startScheduler(intervalMinutes, INITIAL_DELAY / 1000 / 60);
+    }
+}
+
+/**
+ * Set the initial delay (in minutes)
+ */
+export function setSchedulerInitialDelay(initialDelayMinutes: number): void {
+    INITIAL_DELAY = initialDelayMinutes * 60 * 1000;
+    // Restart scheduler if running
+    if (schedulerInterval) {
+        stopScheduler();
+        startScheduler(SYNC_INTERVAL / 1000 / 60, initialDelayMinutes);
     }
 }
 
@@ -104,9 +117,16 @@ export function getSchedulerInterval(): number {
 }
 
 /**
+ * Get the current initial delay (in minutes)
+ */
+export function getSchedulerInitialDelay(): number {
+    return INITIAL_DELAY / 1000 / 60;
+}
+
+/**
  * Start the scheduler
  */
-export function startScheduler(intervalMinutes?: number): void {
+export function startScheduler(intervalMinutes?: number, initialDelayMinutes?: number): void {
     if (schedulerInterval) {
         console.log('[Scheduler] Scheduler already running');
         return;
@@ -116,17 +136,21 @@ export function startScheduler(intervalMinutes?: number): void {
         SYNC_INTERVAL = intervalMinutes * 60 * 1000;
     }
 
-    console.log(`[Scheduler] Starting scheduler (interval: ${SYNC_INTERVAL / 1000 / 60} minutes)`);
+    if (initialDelayMinutes !== undefined) {
+        INITIAL_DELAY = initialDelayMinutes * 60 * 1000;
+    }
 
-    // Run immediately on start
+    console.log(`[Scheduler] Starting scheduler (initial delay: ${INITIAL_DELAY / 1000 / 60} minutes, interval: ${SYNC_INTERVAL / 1000 / 60} minutes)`);
+
+    // Schedule first run after initial delay
     setTimeout(() => {
         syncAllConnectedAccounts();
-    }, 30000); // Wait 30 seconds after server start
-
-    // Then run every SYNC_INTERVAL
-    schedulerInterval = setInterval(() => {
-        syncAllConnectedAccounts();
-    }, SYNC_INTERVAL);
+        
+        // Then run every SYNC_INTERVAL
+        schedulerInterval = setInterval(() => {
+            syncAllConnectedAccounts();
+        }, SYNC_INTERVAL);
+    }, INITIAL_DELAY);
 }
 
 /**
@@ -203,25 +227,73 @@ export function getSyncStatusForUser(userId: number): Platform[] {
 let isPublicScrapingRunning = false;
 let publicScrapingIntervalId: NodeJS.Timeout | null = null;
 
+// Public scraping scheduler variables
+let PUBLIC_SCRAPING_INTERVAL = 30 * 60 * 1000; // Default: 30 minutes
+let PUBLIC_SCRAPING_INITIAL_DELAY = 1 * 60 * 1000; // Default: 1 minute
+
+/**
+ * Set the public scraping scheduler interval (in minutes)
+ */
+export function setPublicScrapingSchedulerInterval(intervalMinutes: number): void {
+  PUBLIC_SCRAPING_INTERVAL = intervalMinutes * 60 * 1000;
+  // Restart scheduler if running
+  if (publicScrapingIntervalId) {
+    stopPublicScrapingScheduler();
+    startPublicScrapingScheduler(intervalMinutes, PUBLIC_SCRAPING_INITIAL_DELAY / 1000 / 60);
+  }
+}
+
+/**
+ * Set the initial delay (in minutes)
+ */
+export function setPublicScrapingSchedulerInitialDelay(initialDelayMinutes: number): void {
+  PUBLIC_SCRAPING_INITIAL_DELAY = initialDelayMinutes * 60 * 1000;
+  // Restart scheduler if running
+  if (publicScrapingIntervalId) {
+    stopPublicScrapingScheduler();
+    startPublicScrapingScheduler(PUBLIC_SCRAPING_INTERVAL / 1000 / 60, initialDelayMinutes);
+  }
+}
+
+/**
+ * Get the current interval (in minutes)
+ */
+export function getPublicScrapingSchedulerInterval(): number {
+  return PUBLIC_SCRAPING_INTERVAL / 1000 / 60;
+}
+
+/**
+ * Get the current initial delay (in minutes)
+ */
+export function getPublicScrapingSchedulerInitialDelay(): number {
+  return PUBLIC_SCRAPING_INITIAL_DELAY / 1000 / 60;
+}
+
 /**
  * Start the public scraping scheduler
  * @param intervalMinutes - Interval in minutes (default: 30)
+ * @param initialDelayMinutes - Initial delay in minutes (default: 1)
  */
-export function startPublicScrapingScheduler(intervalMinutes: number = 30) {
+export function startPublicScrapingScheduler(intervalMinutes: number = 30, initialDelayMinutes: number = 1) {
   if (publicScrapingIntervalId) {
     console.log('[Public Scraping Scheduler] Already running');
     return;
   }
 
-  console.log(`[Public Scraping Scheduler] Starting scheduler (interval: ${intervalMinutes} minutes)`);
+  PUBLIC_SCRAPING_INTERVAL = intervalMinutes * 60 * 1000;
+  PUBLIC_SCRAPING_INITIAL_DELAY = initialDelayMinutes * 60 * 1000;
 
-  // Run immediately on start
-  runPublicScraping();
+  console.log(`[Public Scraping Scheduler] Starting scheduler (initial delay: ${initialDelayMinutes} minutes, interval: ${intervalMinutes} minutes)`);
 
-  // Then run on interval
-  publicScrapingIntervalId = setInterval(() => {
+  // Schedule first run after initial delay
+  setTimeout(() => {
     runPublicScraping();
-  }, intervalMinutes * 60 * 1000);
+    
+    // Then run on interval
+    publicScrapingIntervalId = setInterval(() => {
+      runPublicScraping();
+    }, PUBLIC_SCRAPING_INTERVAL);
+  }, PUBLIC_SCRAPING_INITIAL_DELAY);
 }
 
 /**
