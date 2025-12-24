@@ -1,9 +1,20 @@
 <template>
   <view class="page-container">
+    <!-- 背景装饰 -->
+    <view class="bg-decoration-top"></view>
+    
     <!-- 自定义导航栏 -->
     <view class="custom-nav">
       <view class="nav-content">
-        <text class="nav-title">全网热剧</text>
+        <view class="nav-left">
+          <view class="logo-box">
+            <text class="logo-icon">🎬</text>
+          </view>
+          <view class="nav-texts">
+            <text class="nav-title">全网热剧</text>
+            <text class="nav-subtitle">HOT DRAMAS</text>
+          </view>
+        </view>
         <view class="nav-actions">
           <view class="nav-btn" @tap="handleRefresh" :class="{ refreshing: refreshing }">
             <text class="nav-btn-icon">🔄</text>
@@ -13,20 +24,24 @@
     </view>
     
     <!-- Tab切换 -->
-    <view class="tab-bar">
-      <view
-        class="tab-item"
-        :class="{ active: activeTab === 'tv' }"
-        @tap="handleTabChange('tv')"
-      >
-        <text class="tab-text">电视剧</text>
-      </view>
-      <view
-        class="tab-item"
-        :class="{ active: activeTab === 'movie' }"
-        @tap="handleTabChange('movie')"
-      >
-        <text class="tab-text">电影</text>
+    <view class="tab-section">
+      <view class="tab-wrapper">
+        <view
+          class="tab-item"
+          :class="{ active: activeTab === 'tv' }"
+          @tap="handleTabChange('tv')"
+        >
+          <text class="tab-icon">📺</text>
+          <text class="tab-text">电视剧</text>
+        </view>
+        <view
+          class="tab-item"
+          :class="{ active: activeTab === 'movie' }"
+          @tap="handleTabChange('movie')"
+        >
+          <text class="tab-icon">🎥</text>
+          <text class="tab-text">电影</text>
+        </view>
       </view>
     </view>
     
@@ -39,61 +54,62 @@
       @refresherrefresh="handlePullRefresh"
       @scrolltolower="handleLoadMore"
     >
-      <view class="content-list">
+      <view class="content-grid">
         <view
-          class="drama-card"
+          class="drama-card-grid"
           v-for="(drama, index) in dramas"
           :key="drama.id"
           @tap="handleDramaTap(drama)"
         >
-          <image
-            class="drama-poster"
-            :src="getPosterUrl(drama.poster_path)"
-            mode="aspectFill"
-            :lazy-load="true"
-          />
-          <view class="drama-info">
-            <text class="drama-title">{{ drama.title }}</text>
-            <text class="drama-original" v-if="drama.original_title && drama.original_title !== drama.title">
-              {{ drama.original_title }}
-            </text>
-            <view class="drama-meta">
-              <text class="meta-item" v-if="drama.release_date">
-                📅 {{ formatDate(drama.release_date) }}
-              </text>
-              <text class="meta-item" v-if="drama.vote_average">
-                ⭐ {{ drama.vote_average.toFixed(1) }}
-              </text>
-              <text class="meta-item" v-if="drama.current_episode">
-                第{{ drama.current_episode }}集
-              </text>
+          <view class="poster-wrapper-grid">
+            <image
+              class="drama-poster-grid"
+              :src="getPosterUrl(drama.poster_path)"
+              mode="aspectFill"
+              :lazy-load="true"
+            />
+            <view class="rating-badge-grid" v-if="drama.vote_average">
+              <text class="rating-score">{{ drama.vote_average.toFixed(1) }}</text>
             </view>
-            <text class="drama-overview" v-if="drama.overview">
-              {{ drama.overview }}
-            </text>
+            <view class="episode-badge" v-if="drama.current_episode">
+              <text class="episode-text">更新至{{ drama.current_episode }}集</text>
+            </view>
+          </view>
+          
+          <view class="drama-info-grid">
+            <text class="drama-title-grid">{{ drama.title }}</text>
+            <text class="drama-date-grid" v-if="drama.release_date">{{ formatDate(drama.release_date) }}</text>
           </view>
         </view>
-        
-        <!-- 加载更多 -->
-        <view class="loading-more" v-if="loadingMore">
-          <text class="loading-text">加载中...</text>
-        </view>
-        
-        <!-- 没有更多 -->
-        <view class="no-more" v-if="!hasMore && dramas.length > 0">
-          <text class="no-more-text">没有更多了</text>
-        </view>
-        
-        <!-- 空状态 -->
-        <view class="empty-state" v-if="!loading && dramas.length === 0">
-          <text class="empty-text">暂无内容</text>
-        </view>
+      </view>
+      
+      <!-- 加载更多 -->
+      <view class="loading-more" v-if="loadingMore">
+        <view class="loading-spinner small"></view>
+        <text class="loading-text">加载更多...</text>
+      </view>
+      
+      <!-- 没有更多 -->
+      <view class="no-more" v-if="!hasMore && dramas.length > 0">
+        <text class="no-more-text">已经到底啦</text>
+      </view>
+      
+      <!-- 空状态 -->
+      <view class="empty-state" v-if="!loading && dramas.length === 0">
+        <text class="empty-icon">🎬</text>
+        <text class="empty-text">暂无影视内容</text>
       </view>
     </scroll-view>
     
+    <!-- 自定义 TabBar -->
+    <TabBar :current="2" />
+    
     <!-- 加载遮罩 -->
     <view class="loading-overlay" v-if="loading && dramas.length === 0">
-      <text class="loading-text">加载中...</text>
+      <view class="loading-box">
+        <view class="loading-spinner"></view>
+        <text class="loading-text">正在加载...</text>
+      </view>
     </view>
   </view>
 </template>
@@ -102,6 +118,7 @@
 import { ref, onMounted, watch } from 'vue'
 import { onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { hotDramaApi } from '@/utils/api.js'
+import TabBar from '@/components/TabBar.vue'
 
 const dramas = ref([])
 const loading = ref(false)
@@ -118,9 +135,7 @@ const formatDate = (dateString) => {
   try {
     const date = new Date(dateString)
     const year = date.getFullYear()
-    const month = date.getMonth() + 1
-    const day = date.getDate()
-    return `${year}年${month}月${day}日`
+    return `${year}年`
   } catch (e) {
     return dateString
   }
@@ -188,6 +203,9 @@ const handleRefresh = () => {
 // 下拉刷新
 const handlePullRefresh = () => {
   handleRefresh()
+  setTimeout(() => {
+    refreshing.value = false
+  }, 1000)
 }
 
 // 加载更多
@@ -228,9 +246,6 @@ onMounted(() => {
 // 下拉刷新
 onPullDownRefresh(() => {
   handleRefresh()
-  setTimeout(() => {
-    uni.stopPullDownRefresh()
-  }, 1000)
 })
 
 // 触底加载
@@ -244,49 +259,90 @@ onReachBottom(() => {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #f8fafc;
+  background-color: #f8fafc;
+  position: relative;
+  overflow: hidden;
 }
 
+.bg-decoration-top {
+  position: absolute;
+  top: -100rpx;
+  left: -100rpx;
+  width: 400rpx;
+  height: 400rpx;
+  background: radial-gradient(circle, rgba(236, 72, 153, 0.05) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* 导航栏 */
 .custom-nav {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 1000;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.1);
+  padding-top: env(safe-area-inset-top);
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  z-index: 100;
+  position: relative;
+  border-bottom: 1rpx solid rgba(0,0,0,0.03);
 }
 
 .nav-content {
-  height: 88rpx;
-  padding: 0 30rpx;
+  height: 100rpx;
+  padding: 0 32rpx;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-top: env(safe-area-inset-top);
+}
+
+.nav-left {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.logo-box {
+  width: 64rpx;
+  height: 64rpx;
+  background: linear-gradient(135deg, #ec4899 0%, #d946ef 100%);
+  border-radius: 12rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4rpx 12rpx rgba(236, 72, 153, 0.2);
+}
+
+.logo-icon {
+  font-size: 32rpx;
+}
+
+.nav-texts {
+  display: flex;
+  flex-direction: column;
 }
 
 .nav-title {
-  color: white;
   font-size: 32rpx;
-  font-weight: bold;
+  font-weight: 800;
+  color: #1e293b;
+  letter-spacing: -0.5rpx;
 }
 
-.nav-actions {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
+.nav-subtitle {
+  font-size: 18rpx;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 2rpx;
 }
 
 .nav-btn {
   width: 64rpx;
   height: 64rpx;
+  background: #f8fafc;
+  border-radius: 12rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 12rpx;
-  transition: transform 0.3s;
+  border: 1rpx solid #e2e8f0;
 }
 
 .nav-btn.refreshing {
@@ -294,141 +350,200 @@ onReachBottom(() => {
 }
 
 @keyframes rotate {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
-.nav-btn-icon {
-  font-size: 32rpx;
-}
-
-.tab-bar {
-  margin-top: 88rpx;
-  padding-top: env(safe-area-inset-top);
+/* Tab切换 */
+.tab-section {
   background: white;
+  padding: 20rpx 32rpx;
+  border-bottom-left-radius: 24rpx;
+  border-bottom-right-radius: 24rpx;
+  box-shadow: 0 4rpx 20rpx rgba(148, 163, 184, 0.03);
+  z-index: 10;
+  border-bottom: 1rpx solid rgba(0,0,0,0.03);
+}
+
+.tab-wrapper {
   display: flex;
-  border-bottom: 1rpx solid #eee;
+  background: #f1f5f9;
+  padding: 6rpx;
+  border-radius: 12rpx;
 }
 
 .tab-item {
   flex: 1;
-  padding: 24rpx 0;
-  text-align: center;
-  position: relative;
+  height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  border-radius: 8rpx;
+  transition: all 0.3s;
 }
 
-.tab-item.active::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 60rpx;
-  height: 4rpx;
-  background: #667eea;
-  border-radius: 2rpx;
+.tab-item.active {
+  background: white;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.05);
+}
+
+.tab-icon {
+  font-size: 32rpx;
 }
 
 .tab-text {
-  font-size: 28rpx;
-  color: #666;
-  font-weight: 500;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #64748b;
 }
 
 .tab-item.active .tab-text {
-  color: #667eea;
-  font-weight: bold;
+  color: #ec4899;
+  font-weight: 700;
 }
 
+/* 内容列表 */
 .content-scroll {
   flex: 1;
   height: 0;
 }
 
-.content-list {
-  padding: 24rpx;
-}
-
-.drama-card {
-  background: white;
-  border-radius: 12rpx;
-  overflow: hidden;
-  margin-bottom: 24rpx;
-  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.08);
-  display: flex;
+.content-grid {
+  padding: 24rpx 32rpx;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
   gap: 24rpx;
-  padding: 24rpx;
 }
 
-.drama-poster {
-  width: 200rpx;
-  height: 280rpx;
-  border-radius: 8rpx;
-  flex-shrink: 0;
-  background: #f0f0f0;
-}
-
-.drama-info {
-  flex: 1;
+.drama-card-grid {
+  background: white;
+  border-radius: 16rpx;
+  overflow: hidden;
+  box-shadow: 0 2rpx 12rpx rgba(148, 163, 184, 0.05);
   display: flex;
   flex-direction: column;
-  gap: 12rpx;
+  border: 1rpx solid #f1f5f9;
 }
 
-.drama-title {
-  font-size: 32rpx;
-  font-weight: bold;
-  color: #333;
-  line-height: 1.4;
+.poster-wrapper-grid {
+  position: relative;
+  width: 100%;
+  padding-top: 140%; /* 5:7 aspect ratio */
 }
 
-.drama-original {
-  font-size: 24rpx;
-  color: #999;
+.drama-poster-grid {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: #f1f5f9;
 }
 
-.drama-meta {
+.rating-badge-grid {
+  position: absolute;
+  top: 12rpx;
+  right: 12rpx;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  padding: 4rpx 10rpx;
+  border-radius: 6rpx;
+}
+
+.rating-score {
+  color: #fbbf24;
+  font-size: 22rpx;
+  font-weight: 800;
+}
+
+.episode-badge {
+  position: absolute;
+  bottom: 12rpx;
+  right: 12rpx;
+  background: rgba(236, 72, 153, 0.9);
+  padding: 4rpx 10rpx;
+  border-radius: 6rpx;
+}
+
+.episode-text {
+  color: white;
+  font-size: 20rpx;
+  font-weight: 600;
+}
+
+.drama-info-grid {
+  padding: 16rpx;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.drama-title-grid {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #1e293b;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.drama-date-grid {
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+
+/* 状态展示 */
+.loading-more {
+  padding: 32rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   gap: 16rpx;
 }
 
-.meta-item {
-  font-size: 24rpx;
-  color: #666;
+.loading-spinner {
+  width: 40rpx;
+  height: 40rpx;
+  border: 4rpx solid #e2e8f0;
+  border-top-color: #ec4899;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 
-.drama-overview {
-  font-size: 26rpx;
-  color: #666;
-  line-height: 1.6;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
+.loading-spinner.small {
+  width: 32rpx;
+  height: 32rpx;
+  border-width: 3rpx;
 }
 
-.loading-more,
-.no-more,
-.empty-state {
-  padding: 40rpx;
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.no-more, .empty-state {
+  padding: 60rpx;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16rpx;
 }
 
-.loading-text,
-.no-more-text,
-.empty-text {
+.empty-icon {
+  font-size: 80rpx;
+  opacity: 0.5;
+}
+
+.no-more-text, .empty-text {
   font-size: 26rpx;
-  color: #999;
+  color: #94a3b8;
 }
 
 .loading-overlay {
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
   right: 0;
@@ -439,5 +554,11 @@ onReachBottom(() => {
   justify-content: center;
   z-index: 999;
 }
-</style>
 
+.loading-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16rpx;
+}
+</style>

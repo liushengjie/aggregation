@@ -320,7 +320,78 @@ const GlobalFocusView: React.FC<GlobalFocusViewProps> = ({
                 item.author.toLowerCase().includes(searchQuery.toLowerCase())
             );
         }
-        return filtered;
+        
+        // 按平台分别倒序，然后混合展示
+        if (activePlatform === 'All' && filtered.length > 0) {
+            // 按平台分组
+            const platformGroups: Record<Platform, SocialItem[]> = {
+                Weibo: [],
+                Xiaohongshu: [],
+                Bilibili: [],
+                Douyin: [],
+            };
+            
+            filtered.forEach(item => {
+                if (platformGroups[item.platform]) {
+                    platformGroups[item.platform].push(item);
+                }
+            });
+            
+            // 每个平台内部按时间倒序排序
+            const platformKeys = Object.keys(platformGroups) as Platform[];
+            platformKeys.forEach(platform => {
+                platformGroups[platform].sort((a, b) => {
+                    const timeA = new Date(a.timestamp).getTime();
+                    const timeB = new Date(b.timestamp).getTime();
+                    return timeB - timeA; // 倒序
+                });
+            });
+            
+            // 混合展示：轮询方式从各平台交替取内容
+            const mixed: SocialItem[] = [];
+            const indices: Record<Platform, number> = {
+                Weibo: 0,
+                Xiaohongshu: 0,
+                Bilibili: 0,
+                Douyin: 0,
+            };
+            
+            const totalItems = filtered.length;
+            let addedCount = 0;
+            let platformIndex = 0; // 当前轮询的平台索引
+            
+            // 轮询方式混合：每次从每个平台轮流取一个
+            while (addedCount < totalItems) {
+                let found = false;
+                
+                // 从当前平台开始，轮询所有平台，找到第一个还有内容的平台
+                for (let i = 0; i < platformKeys.length; i++) {
+                    const currentPlatform = platformKeys[(platformIndex + i) % platformKeys.length];
+                    if (indices[currentPlatform] < platformGroups[currentPlatform].length) {
+                        // 取当前平台的下一个内容
+                        const selected = platformGroups[currentPlatform][indices[currentPlatform]];
+                        mixed.push(selected);
+                        indices[currentPlatform]++;
+                        addedCount++;
+                        found = true;
+                        // 更新平台索引，下次从下一个平台开始
+                        platformIndex = (platformIndex + i + 1) % platformKeys.length;
+                        break;
+                    }
+                }
+                
+                if (!found) break;
+            }
+            
+            return mixed;
+        }
+        
+        // 单个平台时，直接按时间倒序
+        return filtered.sort((a, b) => {
+            const timeA = new Date(a.timestamp).getTime();
+            const timeB = new Date(b.timestamp).getTime();
+            return timeB - timeA;
+        });
     }, [items, activePlatform, searchQuery]);
 
     return (
@@ -553,7 +624,7 @@ const GlobalFocusView: React.FC<GlobalFocusViewProps> = ({
                         <>
                             <div className="pb-10">
                                 <Masonry
-                                    breakpointCols={{ default: 6, 2560: 6, 1536: 5, 1280: 4, 1024: 3, 640: 2 }}
+                                    breakpointCols={{ default: 5, 2560: 5, 1536: 5, 1280: 4, 1024: 3, 640: 2 }}
                                     className="masonry-grid"
                                     columnClassName="masonry-grid_column"
                                 >

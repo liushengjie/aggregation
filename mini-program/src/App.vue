@@ -20,6 +20,7 @@ const globalLoading = ref(false)
 // 小程序启动
 onLaunch(() => {
   console.log('小程序启动')
+  uni.hideTabBar()
   globalLoading.value = true
   
   // 检查更新

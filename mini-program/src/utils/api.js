@@ -9,12 +9,12 @@ const getApiBase = () => {
   // 可以通过环境变量或手动切换
   // 暂时强制使用本地，改为 false 切换回生产环境
   const isDev = process.env.NODE_ENV === 'development' || true
-  
+
   // #ifdef MP-WEIXIN
   // 小程序环境，使用配置的 API 地址
   // 开发环境：使用本地接口（需要在微信开发者工具中设置"不校验合法域名"）
   // 生产环境：使用线上接口（需要在微信公众平台配置服务器域名）
-  
+
   if (isDev) {
     // 开发环境：使用本地接口
     // 注意：需要在微信开发者工具中设置"不校验合法域名"
@@ -26,7 +26,7 @@ const getApiBase = () => {
     return 'https://prism.xin/api'
   }
   // #endif
-  
+
   // #ifndef MP-WEIXIN
   // 非小程序环境（H5等）
   return isDev ? 'http://localhost:3351/api' : 'https://prism.xin/api'
@@ -40,9 +40,9 @@ const API_BASE = getApiBase()
  */
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`
-  
+
   console.log('发起请求:', url, options)
-  
+
   try {
     const response = await uni.request({
       url,
@@ -58,22 +58,22 @@ async function request(endpoint, options = {}) {
       sslVerify: false, // 开发环境不验证SSL证书
       // #endif
     })
-    
+
     console.log('请求响应:', response)
-    
+
     // 检查响应状态
     if (response.statusCode !== 200) {
       const errorMsg = response.data?.error || `请求失败: ${response.statusCode}`
       console.error('API请求失败:', errorMsg, response)
       throw new Error(errorMsg)
     }
-    
+
     return response.data
   } catch (error) {
     console.error('API请求失败:', error)
     console.error('请求URL:', url)
     console.error('错误详情:', JSON.stringify(error, null, 2))
-    
+
     // 提供更友好的错误信息
     let errorMessage = '网络请求失败'
     if (error.errMsg) {
@@ -85,10 +85,10 @@ async function request(endpoint, options = {}) {
         errorMessage = '请求被中止'
       }
     }
-    
+
     // 不显示弹窗，只在控制台输出，避免干扰用户体验
     console.warn('请求失败提示:', errorMessage)
-    
+
     throw error
   }
 }
@@ -112,19 +112,19 @@ export const publicItemsApi = {
     if (limit) params.limit = limit
     if (platform) params.platform = platform
     if (category) params.category = category
-    
+
     return request(`/global-focus/public${buildQueryString(params)}`)
   },
-  
+
   getByPlatform: (platform, page = 1, limit = 30, category) => {
     const params = {}
     if (page) params.page = page
     if (limit) params.limit = limit
     if (category) params.category = category
-    
+
     return request(`/global-focus/public/${platform}${buildQueryString(params)}`)
   },
-  
+
   getCounts: () => {
     return request('/global-focus/public/counts')
   }
@@ -138,16 +138,16 @@ export const globalFocusApi = {
     if (limit) params.limit = limit
     if (platform) params.platform = platform
     if (category) params.category = category
-    
+
     return request(`/global-focus${buildQueryString(params)}`)
   },
-  
+
   getByPlatform: (platform, page = 1, limit = 30, category) => {
     const params = {}
     if (page) params.page = page
     if (limit) params.limit = limit
     if (category) params.category = category
-    
+
     return request(`/global-focus/${platform}${buildQueryString(params)}`)
   }
 }
@@ -160,10 +160,10 @@ export const hotDramaApi = {
     if (limit) params.limit = limit
     if (mediaType) params.mediaType = mediaType
     if (search) params.search = search
-    
+
     return request(`/hot-drama${buildQueryString(params)}`)
   },
-  
+
   getBoxOffice: () => {
     return request('/hot-drama/box-office')
   }
@@ -174,12 +174,24 @@ export const hotTrendsApi = {
   getMeta: () => {
     return request('/hot-trends/meta')
   },
-  
+
   getTrends: (platformId, categoryId) => {
     const params = {}
     if (categoryId) params.category = categoryId
-    
+
     return request(`/hot-trends/${platformId}${buildQueryString(params)}`)
+  }
+}
+
+// 开源 API
+export const opensourceApi = {
+  getTrending: (period = 'today', language = 'all') => {
+    const params = { period, language }
+    return request(`/opensource/trending${buildQueryString(params)}`)
+  },
+
+  getLanguages: () => {
+    return request('/opensource/languages')
   }
 }
 
@@ -188,7 +200,7 @@ export const hotTrendsApi = {
 // 图片代理地址会根据 API_BASE 自动切换（本地或生产环境）
 export const getImageProxyUrl = (imageUrl) => {
   if (!imageUrl) return ''
-  
+
   // 使用当前配置的 API_BASE（已经根据环境自动切换）
   // 小程序开发环境：http://localhost:3351/api/image/proxy
   // 小程序生产环境：https://prism.xin/api/image/proxy

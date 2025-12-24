@@ -10,6 +10,15 @@
       }
     },
     {
+      "path": "pages/hot-trends/index",
+      "style": {
+        "navigationBarTitleText": "全网热榜",
+        "navigationStyle": "custom",
+        "backgroundColor": "#f8fafc",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
       "path": "pages/hot-drama/index",
       "style": {
         "navigationBarTitleText": "全网热剧",
@@ -19,9 +28,9 @@
       }
     },
     {
-      "path": "pages/hot-trends/index",
+      "path": "pages/open-source/index",
       "style": {
-        "navigationBarTitleText": "全网热榜",
+        "navigationBarTitleText": "全网开源",
         "navigationStyle": "custom",
         "backgroundColor": "#f8fafc",
         "enablePullDownRefresh": true
@@ -34,10 +43,41 @@
     "backgroundColor": "#f8fafc",
     "backgroundTextStyle": "dark"
   },
+  "tabBar": {
+    "color": "#94a3b8",
+    "selectedColor": "#6366f1",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "聚焦",
+        "iconPath": "static/tabbar/focus.png",
+        "selectedIconPath": "static/tabbar/focus-active.png"
+      },
+      {
+        "pagePath": "pages/hot-trends/index",
+        "text": "热榜",
+        "iconPath": "static/tabbar/trends.png",
+        "selectedIconPath": "static/tabbar/trends-active.png"
+      },
+      {
+        "pagePath": "pages/hot-drama/index",
+        "text": "热剧",
+        "iconPath": "static/tabbar/drama.png",
+        "selectedIconPath": "static/tabbar/drama-active.png"
+      },
+      {
+        "pagePath": "pages/open-source/index",
+        "text": "开源",
+        "iconPath": "static/tabbar/code.png",
+        "selectedIconPath": "static/tabbar/code-active.png"
+      }
+    ]
+  },
   "permission": {
     "scope.userLocation": {
       "desc": "用于提供更好的内容推荐服务"
     }
   }
 }
-
