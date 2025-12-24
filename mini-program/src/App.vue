@@ -22,6 +22,26 @@ onLaunch(() => {
   console.log('小程序启动')
   globalLoading.value = true
   
+  // 检查更新
+  if (uni.canIUse('getUpdateManager')) {
+    const updateManager = uni.getUpdateManager()
+    updateManager.onCheckForUpdate((res) => {
+      if (res.hasUpdate) {
+        updateManager.onUpdateReady(() => {
+          uni.showModal({
+            title: '更新提示',
+            content: '新版本已经准备好，是否重启应用？',
+            success: (res) => {
+              if (res.confirm) {
+                updateManager.applyUpdate()
+              }
+            }
+          })
+        })
+      }
+    })
+  }
+  
   // 初始化完成后隐藏加载
   setTimeout(() => {
     globalLoading.value = false

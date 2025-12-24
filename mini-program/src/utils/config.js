@@ -11,7 +11,10 @@ export const CONFIG = {
   
   // API配置
   api: {
-    baseUrl: 'https://prism.xin/api',
+    // 开发环境：使用本地接口
+    baseUrl: 'http://localhost:3351/api',
+    // 生产环境：使用线上接口
+    // baseUrl: 'https://prism.xin/api',
     timeout: 10000
   },
   

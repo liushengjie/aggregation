@@ -45,16 +45,31 @@ const ALLOWED_ORIGINS = [
 
 app.use(cors({
     origin: function (origin, callback) {
-        // 允许没有 origin 的请求（如移动应用、Postman等）
+        // 允许没有 origin 的请求（如移动应用、Postman、微信小程序等）
         if (!origin) return callback(null, true);
+        
+        // 允许微信开发者工具的请求（开发环境）
+        if (origin.startsWith('http://127.0.0.1:') || origin.startsWith('http://localhost:')) {
+            return callback(null, true);
+        }
         
         if (ALLOWED_ORIGINS.includes(origin)) {
             callback(null, true);
         } else {
+            // 开发环境：允许所有来源（方便调试）
+            if (process.env.NODE_ENV !== 'production') {
+                console.log('CORS: Allowing origin in dev mode:', origin);
+                return callback(null, true);
+            }
+            console.warn('CORS: Blocked origin:', origin);
             callback(new Error('Not allowed by CORS'));
         }
     },
     credentials: true,
+    // 允许的请求头
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    // 允许的请求方法
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 }));
 
 app.use(express.json());

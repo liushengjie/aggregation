@@ -3,10 +3,28 @@
     {
       "path": "pages/index/index",
       "style": {
-        "navigationBarTitleText": "棱镜聚合",
+        "navigationBarTitleText": "全网聚焦",
         "navigationStyle": "custom",
         "backgroundColor": "#f8fafc",
-        "enablePullDownRefresh": false
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/hot-drama/index",
+      "style": {
+        "navigationBarTitleText": "全网热剧",
+        "navigationStyle": "custom",
+        "backgroundColor": "#f8fafc",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/hot-trends/index",
+      "style": {
+        "navigationBarTitleText": "全网热榜",
+        "navigationStyle": "custom",
+        "backgroundColor": "#f8fafc",
+        "enablePullDownRefresh": true
       }
     }
   ],

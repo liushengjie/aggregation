@@ -43,6 +43,7 @@
     "appid": "",
     "setting": {
       "urlCheck": false,
+      "minifyJS": false,
       "es6": true,
       "enhance": true,
       "postcss": true,
@@ -63,6 +64,12 @@
       "useApiHook": true,
       "useApiHostProcess": true,
       "ignoreUploadUnusedFiles": true
+    },
+    "networkTimeout": {
+      "request": 10000,
+      "connectSocket": 10000,
+      "uploadFile": 10000,
+      "downloadFile": 10000
     },
     "usingComponents": true,
     "lazyCodeLoading": "requiredComponents",
