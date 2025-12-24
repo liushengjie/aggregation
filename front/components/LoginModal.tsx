@@ -87,7 +87,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onSuccess }) =
 
           {/* Header */}
           <div className="text-center mb-6">
-            <div className="w-14 h-14 bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 rounded-md flex items-center justify-center mx-auto mb-4 shadow-lg shadow-indigo-500/30">
+            <div className="w-14 h-14 rounded-md flex items-center justify-center mx-auto mb-4">
               <PrismLogo size={32} />
             </div>
             <h1 className="text-xl font-black text-slate-800 tracking-tight mb-1">棱镜聚合</h1>

@@ -162,8 +162,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, activePlat
         <div className="p-5 mb-1">
           <div className="flex items-center gap-3 group cursor-pointer">
             <div className="relative">
-              <div className="w-9 h-9 bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 rounded-md flex items-center justify-center text-white shadow-md shadow-indigo-200/50 transition-all duration-300 group-hover:scale-105">
-                <PrismLogo size={20} />
+              <div className="w-10 h-10 rounded-md flex items-center justify-center transition-all duration-300 group-hover:scale-105">
+                <PrismLogo size={28} />
               </div>
             </div>
             <div>

@@ -6,6 +6,7 @@ import { globalFocusApi, publicItemsApi, accountsApi } from '../api/api';
 import { PLATFORM_NAMES } from '../constants';
 import { Platform, SocialItem } from '../types';
 import ContentCard from '../components/ContentCard';
+import PrismLogo from '../components/PrismLogo';
 
 // 分类定义
 type ContentCategory = 
@@ -335,8 +336,8 @@ const GlobalFocusView: React.FC<GlobalFocusViewProps> = ({
                             <Menu size={20} />
                         </button>
                         <div className="flex items-center gap-2 flex-shrink-0">
-                            <div className="w-8 h-8 bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 rounded-md flex items-center justify-center text-white shadow-md shadow-indigo-200/50">
-                                <LayoutGrid size={16} strokeWidth={2.5} />
+                            <div className="w-9 h-9 rounded-md flex items-center justify-center">
+                                <PrismLogo size={28} />
                             </div>
                             <div className="flex items-center gap-2 flex-shrink-0">
                                 <div className="flex-shrink-0">
@@ -412,8 +413,8 @@ const GlobalFocusView: React.FC<GlobalFocusViewProps> = ({
                 {/* Desktop: Left */}
                 <div className="hidden lg:flex items-center gap-4 flex-1 min-w-0">
                     <div className="flex items-center gap-3 flex-shrink-0">
-                        <div className="w-10 h-10 bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 rounded-md flex items-center justify-center text-white shadow-md shadow-indigo-200/50">
-                            <LayoutGrid size={20} strokeWidth={2.5} />
+                        <div className="w-12 h-12 rounded-md flex items-center justify-center">
+                            <PrismLogo size={32} />
                         </div>
                         <div className="flex items-center gap-3 flex-shrink-0">
                             <div className="flex-shrink-0">

@@ -1,0 +1,69 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- 渐变定义 -->
+    <linearGradient id="prismGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#764ba2;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f093fb;stop-opacity:1" />
+    </linearGradient>
+    
+    <linearGradient id="lightGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#ffffff;stop-opacity:0.2" />
+    </linearGradient>
+    
+    <!-- 光晕效果 -->
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- 背景圆形 -->
+  <circle cx="100" cy="100" r="90" fill="url(#prismGradient)" opacity="0.1"/>
+  
+  <!-- 棱镜主体 - 六边形 -->
+  <g transform="translate(100, 100)">
+    <!-- 六边形外框 -->
+    <polygon 
+      points="-50,-30 50,-30 70,0 50,30 -50,30 -70,0" 
+      fill="url(#prismGradient)" 
+      stroke="url(#prismGradient)" 
+      stroke-width="2"
+      filter="url(#glow)"
+    />
+    
+    <!-- 内部光线折射效果 -->
+    <polygon 
+      points="-40,-20 40,-20 50,0 40,20 -40,20 -50,0" 
+      fill="url(#lightGradient)" 
+      opacity="0.6"
+    />
+    
+    <!-- 光线线条 -->
+    <line x1="-60" y1="-20" x2="60" y2="20" stroke="white" stroke-width="2" opacity="0.4"/>
+    <line x1="-60" y1="0" x2="60" y2="0" stroke="white" stroke-width="2" opacity="0.4"/>
+    <line x1="-60" y1="20" x2="60" y2="-20" stroke="white" stroke-width="2" opacity="0.4"/>
+    
+    <!-- 中心亮点 -->
+    <circle cx="0" cy="0" r="8" fill="white" opacity="0.8" filter="url(#glow)"/>
+  </g>
+  
+  <!-- 文字 "棱镜" -->
+  <text 
+    x="100" 
+    y="150" 
+    font-family="Arial, sans-serif" 
+    font-size="24" 
+    font-weight="bold" 
+    fill="url(#prismGradient)" 
+    text-anchor="middle"
+    opacity="0.9"
+  >
+    棱镜
+  </text>
+</svg>
+
