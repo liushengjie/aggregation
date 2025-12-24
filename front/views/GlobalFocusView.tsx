@@ -1,11 +1,39 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Search, Bell, RefreshCw, User, LogOut, ChevronDown, LayoutGrid, Menu, Loader2, Clock, Sparkles } from 'lucide-react';
+import { Search, Bell, RefreshCw, User, LogOut, ChevronDown, LayoutGrid, Menu, Loader2, Clock, Sparkles, Film, Gamepad2, Cpu, Utensils, MapPin, Trophy, TrendingUp, Newspaper } from 'lucide-react';
 import Masonry from 'react-masonry-css';
 import { useAuth } from '../contexts/AuthContext';
 import { globalFocusApi, publicItemsApi, accountsApi } from '../api/api';
 import { PLATFORM_NAMES } from '../constants';
 import { Platform, SocialItem } from '../types';
 import ContentCard from '../components/ContentCard';
+
+// 分类定义
+type ContentCategory = 
+  | 'all'           // 全部
+  | 'entertainment' // 影视娱乐
+  | 'gaming'        // 游戏电竞
+  | 'tech'          // 科技数码
+  | 'food'          // 美食生活
+  | 'travel'        // 旅游出行
+  | 'fashion'       // 时尚美妆
+  | 'sports'        // 体育健身
+  | 'finance'       // 财经商业
+  | 'society'       // 社会热点
+  | 'other';        // 其他
+
+const CATEGORIES: Array<{ id: ContentCategory; name: string; icon: React.ComponentType<{ size?: number; className?: string }> }> = [
+  { id: 'all', name: '全部', icon: LayoutGrid },
+  { id: 'entertainment', name: '影视娱乐', icon: Film },
+  { id: 'gaming', name: '游戏电竞', icon: Gamepad2 },
+  { id: 'tech', name: '科技数码', icon: Cpu },
+  { id: 'food', name: '美食生活', icon: Utensils },
+  { id: 'travel', name: '旅游出行', icon: MapPin },
+  { id: 'fashion', name: '时尚美妆', icon: Sparkles },
+  { id: 'sports', name: '体育健身', icon: Trophy },
+  { id: 'finance', name: '财经商业', icon: TrendingUp },
+  { id: 'society', name: '社会热点', icon: Newspaper },
+  { id: 'other', name: '其他', icon: LayoutGrid },
+];
 
 interface GlobalFocusViewProps {
     activePlatform: Platform | 'All';
@@ -32,6 +60,7 @@ const GlobalFocusView: React.FC<GlobalFocusViewProps> = ({
 }) => {
     const { user, logout } = useAuth();
     const [activeTab, setActiveTab] = useState<'public' | 'favorite'>('public'); // 新增：两个 tab
+    const [activeCategory, setActiveCategory] = useState<ContentCategory>('all'); // 分类Tab
     const [searchQuery, setSearchQuery] = useState('');
     const [items, setItems] = useState<SocialItem[]>([]);
     const [itemsLoading, setItemsLoading] = useState(false);
@@ -72,16 +101,18 @@ const GlobalFocusView: React.FC<GlobalFocusViewProps> = ({
 
         try {
             let data;
+            const categoryParam = activeCategory === 'all' ? undefined : activeCategory;
+            
             if (activeTab === 'public') {
                 // 使用公开数据 API
                 data = activePlatform === 'All'
-                    ? await publicItemsApi.getAll(page, itemsPerPage)
-                    : await publicItemsApi.getByPlatform(activePlatform, page, itemsPerPage);
+                    ? await publicItemsApi.getAll(page, itemsPerPage, undefined, categoryParam)
+                    : await publicItemsApi.getByPlatform(activePlatform, page, itemsPerPage, categoryParam);
             } else {
                 // 使用用户个人数据 API
                 data = activePlatform === 'All'
-                    ? await globalFocusApi.getAll(page, itemsPerPage)
-                    : await globalFocusApi.getByPlatform(activePlatform, page, itemsPerPage);
+                    ? await globalFocusApi.getAll(page, itemsPerPage, undefined, categoryParam)
+                    : await globalFocusApi.getByPlatform(activePlatform, page, itemsPerPage, categoryParam);
             }
 
             if (data.items && data.items.length > 0) {
@@ -148,7 +179,7 @@ const GlobalFocusView: React.FC<GlobalFocusViewProps> = ({
         } finally {
             if (!append) setItemsLoading(false);
         }
-    }, [user, activePlatform, activeTab]);
+    }, [user, activePlatform, activeTab, activeCategory, itemsPerPage]);
 
     const loadMore = useCallback(() => {
         if (!hasMore || itemsLoading) return;
@@ -270,7 +301,7 @@ const GlobalFocusView: React.FC<GlobalFocusViewProps> = ({
         // Reset lastUpdated when switching tabs to show loading state
         setLastUpdated('加载中...');
         loadItems(1, false);
-    }, [user, activePlatform, activeTab, loadItems]);
+    }, [user, activePlatform, activeTab, activeCategory, loadItems]);
 
     // Notify parent when activeTab changes
     useEffect(() => {
@@ -471,6 +502,34 @@ const GlobalFocusView: React.FC<GlobalFocusViewProps> = ({
                     </button>
                 </div>
             </header>
+
+            {/* 分类Tab */}
+            <div className="px-3 lg:px-0 py-2 bg-white/30 backdrop-blur-md border-b border-white/60 shrink-0">
+                <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+                    {CATEGORIES.map((category) => {
+                        const Icon = category.icon;
+                        return (
+                            <button
+                                key={category.id}
+                                onClick={() => {
+                                    setActiveCategory(category.id);
+                                    setCurrentPage(1);
+                                    setHasMore(true);
+                                    setItems([]);
+                                }}
+                                className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-xs font-black transition-all whitespace-nowrap shrink-0 ${
+                                    activeCategory === category.id
+                                        ? 'bg-indigo-600 text-white shadow-md'
+                                        : 'bg-white/60 text-slate-600 hover:bg-white/80 hover:text-slate-800'
+                                }`}
+                            >
+                                <Icon size={14} />
+                                <span>{category.name}</span>
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
 
             <div ref={scrollContainerRef} className="flex-1 overflow-y-auto custom-scrollbar px-3 lg:px-0 lg:pr-1 pt-3 lg:pt-0">
                 <div className="space-y-4">

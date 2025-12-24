@@ -11,9 +11,29 @@ router.get('/', requireAuth, (req, res) => {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 30;
         const offset = (page - 1) * limit;
+        const platform = req.query.platform as string | undefined;
+        const category = req.query.category as string | undefined;
 
-        const items = itemOps.findByUser.all(req.session.userId, limit, offset);
-        const countResult = itemOps.countByUser.get(req.session.userId) as { count: number };
+        let items: any[];
+        let countResult: { count: number };
+
+        if (platform && category) {
+            // 按平台和分类查询
+            items = itemOps.findByUserPlatformAndCategory.all(req.session.userId, platform, category, limit, offset);
+            countResult = itemOps.countByUserPlatformAndCategory.get(req.session.userId, platform, category) as { count: number };
+        } else if (category) {
+            // 按分类查询
+            items = itemOps.findByUserAndCategory.all(req.session.userId, category, limit, offset);
+            countResult = itemOps.countByUserAndCategory.get(req.session.userId, category) as { count: number };
+        } else if (platform) {
+            // 按平台查询
+            items = itemOps.findByUserAndPlatform.all(req.session.userId, platform, limit, offset);
+            countResult = itemOps.countByUserAndPlatform.get(req.session.userId, platform) as { count: number };
+        } else {
+            // 查询全部
+            items = itemOps.findByUser.all(req.session.userId, limit, offset);
+            countResult = itemOps.countByUser.get(req.session.userId) as { count: number };
+        }
 
         // Parse tags from JSON string
         const parsedItems = (items as any[]).map(item => ({
@@ -156,16 +176,30 @@ router.get('/public', (req, res) => {
         const limit = parseInt(req.query.limit as string) || 30;
         const offset = (page - 1) * limit;
         const platform = req.query.platform as string | undefined;
+        const category = req.query.category as string | undefined;
 
         let items: any[];
         let total: number;
 
-        if (platform && ['Weibo', 'Bilibili', 'Xiaohongshu', 'Douyin'].includes(platform)) {
+        if (platform && category && ['Weibo', 'Bilibili', 'Xiaohongshu', 'Douyin'].includes(platform)) {
+            // 按平台和分类查询
+            items = publicItemOps.findByPlatformAndCategory.all(platform, category, limit, offset) as any[];
+            const countResult = publicItemOps.countByPlatformAndCategory.get(platform, category) as { count: number };
+            total = countResult?.count || 0;
+        } else if (category) {
+            // 按分类查询
+            items = publicItemOps.findByCategory.all(category, limit, offset) as any[];
+            const countResult = publicItemOps.countByCategory.all() as Array<{ category: string; count: number }>;
+            const categoryCount = countResult.find(c => c.category === category);
+            total = categoryCount?.count || 0;
+        } else if (platform && ['Weibo', 'Bilibili', 'Xiaohongshu', 'Douyin'].includes(platform)) {
+            // 按平台查询
             items = publicItemOps.findByPlatform.all(platform, limit, offset) as any[];
             const countResult = publicItemOps.countByPlatform.all() as Array<{ platform: string; count: number }>;
             const platformCount = countResult.find(c => c.platform === platform);
             total = platformCount?.count || 0;
         } else {
+            // 查询全部
             items = publicItemOps.findAll.all(limit, offset) as any[];
             const countResult = publicItemOps.countByPlatform.all() as Array<{ platform: string; count: number }>;
             total = countResult.reduce((sum, c) => sum + c.count, 0);

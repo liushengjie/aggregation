@@ -3,8 +3,22 @@ const getApiBase = () => {
     if (typeof window !== 'undefined') {
         // 浏览器环境
         const hostname = window.location.hostname;
-        const port = hostname === 'localhost' || hostname === '127.0.0.1' ? '3351' : window.location.port || '3351';
-        return `${window.location.protocol}//${hostname}:${port}/api`;
+        const protocol = window.location.protocol;
+        const port = window.location.port;
+        
+        // 如果是默认端口（80/443）或端口为空，不包含端口号
+        // 这样可以通过 Nginx 代理访问，而不需要直接访问后端端口
+        if (!port || port === '80' || port === '443') {
+            return `${protocol}//${hostname}/api`;
+        }
+        
+        // 开发环境（localhost）或非标准端口，使用原逻辑
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+            return `http://${hostname}:3351/api`;
+        }
+        
+        // 其他情况（生产环境非标准端口）
+        return `${protocol}//${hostname}:${port}/api`;
     }
     // Node.js环境（开发时）
     return 'http://localhost:3351/api';
@@ -99,14 +113,18 @@ export const accountsApi = {
 
 // Public Items API (no auth required) - now under /api/global-focus/public
 export const publicItemsApi = {
-    getAll: (page = 1, limit = 30, platform?: string) => {
+    getAll: (page = 1, limit = 30, platform?: string, category?: string) => {
         const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
         if (platform) params.append('platform', platform);
+        if (category) params.append('category', category);
         return fetchApi(`/global-focus/public?${params.toString()}`);
     },
 
-    getByPlatform: (platform: string, page = 1, limit = 30) =>
-        fetchApi(`/global-focus/public/${platform}?page=${page}&limit=${limit}`),
+    getByPlatform: (platform: string, page = 1, limit = 30, category?: string) => {
+        const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
+        if (category) params.append('category', category);
+        return fetchApi(`/global-focus/public/${platform}?${params.toString()}`);
+    },
 
     getCounts: () =>
         fetchApi('/global-focus/public/stats/counts'),
@@ -114,11 +132,18 @@ export const publicItemsApi = {
 
 // Global Focus API (user-specific, requires auth)
 export const globalFocusApi = {
-    getAll: (page = 1, limit = 30) =>
-        fetchApi(`/global-focus?page=${page}&limit=${limit}`),
+    getAll: (page = 1, limit = 30, platform?: string, category?: string) => {
+        const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
+        if (platform) params.append('platform', platform);
+        if (category) params.append('category', category);
+        return fetchApi(`/global-focus?${params.toString()}`);
+    },
 
-    getByPlatform: (platform: string, page = 1, limit = 30) =>
-        fetchApi(`/global-focus/${platform}?page=${page}&limit=${limit}`),
+    getByPlatform: (platform: string, page = 1, limit = 30, category?: string) => {
+        const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
+        if (category) params.append('category', category);
+        return fetchApi(`/global-focus/${platform}?${params.toString()}`);
+    },
 
     getById: (id: number) =>
         fetchApi(`/global-focus/detail/${id}`),

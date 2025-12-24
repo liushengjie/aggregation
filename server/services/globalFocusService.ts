@@ -2,6 +2,227 @@ import { chromium, Cookie, Page } from 'playwright';
 import { itemOps, accountOps, publicItemOps } from './database';
 import db from './database';
 
+/**
+ * 内容分类服务 - 基于规则的分类器
+ * 在采集过程中实时分类，找不到类别的归为"other"
+ */
+
+export type ContentCategory = 
+  | 'entertainment'  // 影视娱乐
+  | 'gaming'         // 游戏电竞
+  | 'tech'           // 科技数码
+  | 'food'           // 美食生活
+  | 'travel'         // 旅游出行
+  | 'fashion'        // 时尚美妆
+  | 'sports'         // 体育健身
+  | 'finance'        // 财经商业
+  | 'society'        // 社会热点
+  | 'other';         // 其他
+
+interface ClassificationRule {
+  category: ContentCategory;
+  keywords: string[];
+  weight: number; // 权重
+  excludeKeywords?: string[]; // 排除关键词
+}
+
+// 分类规则配置
+const CLASSIFICATION_RULES: ClassificationRule[] = [
+  {
+    category: 'entertainment',
+    keywords: [
+      '电影', '电视剧', '剧集', '综艺', '明星', '演员', '导演', '票房', '上映', 
+      '娱乐', '娱乐圈', '影视', '影片', '电影票', '观影', '追剧', '剧评', 
+      '影评', '电影节', '金像奖', '奥斯卡', '戛纳', '威尼斯', '柏林',
+      '爱豆', '偶像', '粉丝', '应援', '打榜', '追星', '饭圈'
+    ],
+    weight: 1.0,
+    excludeKeywords: ['游戏电影', '科技电影', '电影游戏']
+  },
+  {
+    category: 'gaming',
+    keywords: [
+      '游戏', '电竞', '攻略', 'steam', 'switch', 'ps5', 'xbox', '手游', '端游', 
+      '游戏评测', '游戏推荐', '游戏攻略', '游戏直播', '游戏解说', '游戏视频',
+      '王者荣耀', '和平精英', '原神', '崩坏', '明日方舟', '阴阳师',
+      'LOL', '英雄联盟', 'DOTA', 'CS', '绝地求生', '吃鸡',
+      '游戏机', '掌机', '主机', 'PC游戏', '单机游戏', '网络游戏',
+      '游戏主播', '游戏UP主', '游戏区', '游戏频道'
+    ],
+    weight: 1.0
+  },
+  {
+    category: 'tech',
+    keywords: [
+      '科技', '数码', '手机', '电脑', 'AI', '人工智能', '编程', '代码', '互联网', 
+      '芯片', '5G', '6G', '处理器', 'CPU', 'GPU', '内存', '硬盘', 'SSD',
+      'iPhone', 'iPad', 'Mac', 'Android', 'iOS', 'Windows', 'Linux',
+      '华为', '小米', 'OPPO', 'vivo', '三星', '苹果',
+      '程序员', '开发', '前端', '后端', '算法', '数据结构',
+      '区块链', '加密货币', '比特币', '以太坊', 'NFT',
+      '智能家居', '物联网', 'IoT', '自动驾驶', '新能源车', '电动车',
+      '软件', 'APP', '应用', '小程序', '网站', '服务器'
+    ],
+    weight: 1.0
+  },
+  {
+    category: 'food',
+    keywords: [
+      '美食', '探店', '餐厅', '料理', '烹饪', '食谱', '菜谱', '做菜', '下厨',
+      '火锅', '烧烤', '日料', '韩料', '西餐', '中餐', '川菜', '粤菜', '湘菜',
+      '小吃', '甜品', '奶茶', '咖啡', '茶', '酒', '啤酒', '红酒', '白酒',
+      '早餐', '午餐', '晚餐', '夜宵', '零食', '零食推荐',
+      '生活', '家居', '收纳', '整理', '清洁', '装修', '家具', '家电'
+    ],
+    weight: 1.0
+  },
+  {
+    category: 'travel',
+    keywords: [
+      '旅游', '旅行', '攻略', '景点', '景区', '酒店', '民宿', '机票', '火车票',
+      '自由行', '跟团', '自驾', '背包客', '穷游', '度假', '度假村',
+      '北京', '上海', '广州', '深圳', '杭州', '成都', '重庆', '西安', '南京',
+      '日本', '韩国', '泰国', '新加坡', '马来西亚', '越南', '菲律宾',
+      '欧洲', '美国', '澳洲', '新西兰', '马尔代夫', '巴厘岛',
+      '拍照', '打卡', '网红', '必去', '推荐', '攻略'
+    ],
+    weight: 1.0
+  },
+  {
+    category: 'fashion',
+    keywords: [
+      '时尚', '穿搭', '搭配', '服装', '衣服', '裙子', '裤子', '鞋子', '包包',
+      '美妆', '化妆', '护肤', '面膜', '口红', '粉底', '眼影', '腮红',
+      '品牌', '奢侈品', 'Gucci', 'LV', 'Chanel', 'Dior', 'Prada',
+      '潮流', '流行', '趋势', '风格', '韩风', '日系', '欧美',
+      '发型', '染发', '烫发', '美甲', '纹身', '配饰', '首饰'
+    ],
+    weight: 1.0
+  },
+  {
+    category: 'sports',
+    keywords: [
+      '体育', '运动', '健身', '跑步', '瑜伽', '健身', '减肥', '减脂', '增肌',
+      '篮球', '足球', '乒乓球', '羽毛球', '网球', '游泳', '骑行', '马拉松',
+      'NBA', 'CBA', '中超', '英超', '西甲', '意甲', '德甲', '法甲',
+      '奥运会', '世界杯', '欧洲杯', '亚洲杯', '全运会',
+      '健身房', '私教', '训练', '器械', '哑铃', '杠铃'
+    ],
+    weight: 1.0
+  },
+  {
+    category: 'finance',
+    keywords: [
+      '财经', '经济', '股市', '股票', '基金', '投资', '理财', '银行', '保险',
+      'A股', '港股', '美股', '创业板', '科创板', '上证', '深证',
+      '房价', '楼市', '房地产', '买房', '卖房', '租房',
+      '消费', '消费升级', '消费降级', '物价', '通胀', '通缩',
+      '创业', '融资', 'IPO', '上市', '市值', '估值'
+    ],
+    weight: 1.0
+  },
+  {
+    category: 'society',
+    keywords: [
+      '社会', '新闻', '时事', '热点', '事件', '事故', '案件', '法律', '法规',
+      '政策', '政府', '国家', '国际', '外交', '军事',
+      '教育', '学校', '学生', '老师', '考试', '高考', '考研',
+      '医疗', '医院', '医生', '健康', '疾病', '疫情',
+      '环保', '环境', '污染', '气候', '能源', '可持续发展'
+    ],
+    weight: 1.0
+  }
+];
+
+/**
+ * 对内容进行分类
+ * @param title 标题
+ * @param content 内容
+ * @param tags 标签数组
+ * @returns 分类结果
+ */
+function classifyContent(
+  title: string = '',
+  content: string = '',
+  tags: string[] = []
+): ContentCategory {
+  // 合并所有文本内容
+  const text = `${title} ${content} ${tags.join(' ')}`.toLowerCase();
+  
+  // 如果文本为空，返回other
+  if (!text.trim()) {
+    return 'other';
+  }
+  
+  // 计算每个分类的得分
+  const scores: Record<ContentCategory, number> = {
+    entertainment: 0,
+    gaming: 0,
+    tech: 0,
+    food: 0,
+    travel: 0,
+    fashion: 0,
+    sports: 0,
+    finance: 0,
+    society: 0,
+    other: 0
+  };
+  
+  // 遍历所有规则
+  for (const rule of CLASSIFICATION_RULES) {
+    let score = 0;
+    let matchCount = 0;
+    
+    // 检查关键词匹配
+    for (const keyword of rule.keywords) {
+      const keywordLower = keyword.toLowerCase();
+      if (text.includes(keywordLower)) {
+        matchCount++;
+        score += rule.weight;
+        
+        // 标题中的关键词权重更高
+        if (title.toLowerCase().includes(keywordLower)) {
+          score += rule.weight * 0.5;
+        }
+      }
+    }
+    
+    // 检查排除关键词
+    if (rule.excludeKeywords && matchCount > 0) {
+      for (const exclude of rule.excludeKeywords) {
+        if (text.includes(exclude.toLowerCase())) {
+          // 如果匹配排除关键词，降低该分类的得分
+          score = score * 0.3;
+          break;
+        }
+      }
+    }
+    
+    // 累计得分
+    if (score > 0) {
+      scores[rule.category] += score;
+    }
+  }
+  
+  // 找到得分最高的分类
+  let maxScore = 0;
+  let maxCategory: ContentCategory = 'other';
+  
+  for (const [category, score] of Object.entries(scores) as [ContentCategory, number][]) {
+    if (score > maxScore) {
+      maxScore = score;
+      maxCategory = category;
+    }
+  }
+  
+  // 如果最高得分太低（小于0.5），归为other
+  if (maxScore < 0.5) {
+    return 'other';
+  }
+  
+  return maxCategory;
+}
+
 type Platform = 'Weibo' | 'Bilibili' | 'Xiaohongshu';
 type PublicPlatform = 'Weibo' | 'Bilibili' | 'Xiaohongshu' | 'Douyin';
 
@@ -887,8 +1108,8 @@ export async function syncPlatformContent(
     // Save items to database with deduplication by user_id, title, and platform
     // Use transaction to ensure all items in this batch have the same fetched_at
     const insertWithBatchTime = db.prepare(`
-      INSERT INTO social_items (account_id, platform, external_id, title, author, thumbnail, url, content, likes, comments, shares, views, tags, fetched_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO social_items (account_id, platform, external_id, title, author, thumbnail, url, content, likes, comments, shares, views, tags, category, fetched_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(account_id, external_id) DO UPDATE SET
         title = excluded.title,
         author = excluded.author,
@@ -900,6 +1121,7 @@ export async function syncPlatformContent(
         shares = excluded.shares,
         views = excluded.views,
         tags = excluded.tags,
+        category = excluded.category,
         fetched_at = excluded.fetched_at
     `);
 
@@ -915,6 +1137,9 @@ export async function syncPlatformContent(
           continue;
         }
 
+        // 分类内容
+        const category = classifyContent(item.title, item.content || '', item.tags || []);
+        
         // Insert new item with batch timestamp
         insertWithBatchTime.run(
           accountId,
@@ -930,6 +1155,7 @@ export async function syncPlatformContent(
           item.shares,
           item.views,
           JSON.stringify(item.tags),
+          category,
           batchTimeStr
         );
         savedCount++;
@@ -1372,6 +1598,9 @@ export async function scrapePublicContent(
         }
         
         const tagsJson = JSON.stringify(item.tags || []);
+        // 分类内容
+        const category = classifyContent(item.title, item.content || '', item.tags || []);
+        
         publicItemOps.upsert.run(
           platform,
           sourceUrl,
@@ -1386,7 +1615,8 @@ export async function scrapePublicContent(
           item.comments || 0,
           item.shares || 0,
           item.views || 0,
-          tagsJson
+          tagsJson,
+          category
         );
         savedCount++;
       } catch (err: any) {

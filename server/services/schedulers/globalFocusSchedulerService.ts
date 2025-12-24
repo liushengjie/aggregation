@@ -84,6 +84,7 @@ async function syncAllConnectedAccounts(): Promise<void> {
 let SYNC_INTERVAL = 30 * 60 * 1000;
 let INITIAL_DELAY = 1 * 60 * 1000; // Default: 1 minute
 let schedulerInterval: NodeJS.Timeout | null = null;
+let schedulerTimeout: NodeJS.Timeout | null = null;
 
 /**
  * Set the scheduler interval (in minutes)
@@ -127,9 +128,10 @@ export function getSchedulerInitialDelay(): number {
  * Start the scheduler
  */
 export function startScheduler(intervalMinutes?: number, initialDelayMinutes?: number): void {
-    if (schedulerInterval) {
-        console.log('[Scheduler] Scheduler already running');
-        return;
+    // 如果定时器已经在运行，先停止它
+    if (schedulerInterval || schedulerTimeout) {
+        console.log('[Scheduler] Stopping existing scheduler before restarting');
+        stopScheduler();
     }
 
     if (intervalMinutes !== undefined) {
@@ -143,7 +145,8 @@ export function startScheduler(intervalMinutes?: number, initialDelayMinutes?: n
     console.log(`[Scheduler] Starting scheduler (initial delay: ${INITIAL_DELAY / 1000 / 60} minutes, interval: ${SYNC_INTERVAL / 1000 / 60} minutes)`);
 
     // Schedule first run after initial delay
-    setTimeout(() => {
+    schedulerTimeout = setTimeout(() => {
+        schedulerTimeout = null;
         syncAllConnectedAccounts();
         
         // Then run every SYNC_INTERVAL
@@ -157,9 +160,20 @@ export function startScheduler(intervalMinutes?: number, initialDelayMinutes?: n
  * Stop the scheduler
  */
 export function stopScheduler(): void {
+    let wasRunning = false;
+    // 清除 setInterval
     if (schedulerInterval) {
         clearInterval(schedulerInterval);
         schedulerInterval = null;
+        wasRunning = true;
+    }
+    // 清除 setTimeout
+    if (schedulerTimeout) {
+        clearTimeout(schedulerTimeout);
+        schedulerTimeout = null;
+        wasRunning = true;
+    }
+    if (wasRunning) {
         console.log('[Scheduler] Scheduler stopped');
     }
 }
@@ -226,6 +240,7 @@ export function getSyncStatusForUser(userId: number): Platform[] {
 // Public scraping scheduler
 let isPublicScrapingRunning = false;
 let publicScrapingIntervalId: NodeJS.Timeout | null = null;
+let publicScrapingTimeoutId: NodeJS.Timeout | null = null;
 
 // Public scraping scheduler variables
 let PUBLIC_SCRAPING_INTERVAL = 30 * 60 * 1000; // Default: 30 minutes
@@ -275,9 +290,10 @@ export function getPublicScrapingSchedulerInitialDelay(): number {
  * @param initialDelayMinutes - Initial delay in minutes (default: 1)
  */
 export function startPublicScrapingScheduler(intervalMinutes: number = 30, initialDelayMinutes: number = 1) {
-  if (publicScrapingIntervalId) {
-    console.log('[Public Scraping Scheduler] Already running');
-    return;
+  // 如果定时器已经在运行，先停止它
+  if (publicScrapingIntervalId || publicScrapingTimeoutId) {
+    console.log('[Public Scraping Scheduler] Stopping existing scheduler before restarting');
+    stopPublicScrapingScheduler();
   }
 
   PUBLIC_SCRAPING_INTERVAL = intervalMinutes * 60 * 1000;
@@ -286,7 +302,8 @@ export function startPublicScrapingScheduler(intervalMinutes: number = 30, initi
   console.log(`[Public Scraping Scheduler] Starting scheduler (initial delay: ${initialDelayMinutes} minutes, interval: ${intervalMinutes} minutes)`);
 
   // Schedule first run after initial delay
-  setTimeout(() => {
+  publicScrapingTimeoutId = setTimeout(() => {
+    publicScrapingTimeoutId = null;
     runPublicScraping();
     
     // Then run on interval
@@ -300,9 +317,20 @@ export function startPublicScrapingScheduler(intervalMinutes: number = 30, initi
  * Stop the public scraping scheduler
  */
 export function stopPublicScrapingScheduler() {
+  let wasRunning = false;
+  // 清除 setInterval
   if (publicScrapingIntervalId) {
     clearInterval(publicScrapingIntervalId);
     publicScrapingIntervalId = null;
+    wasRunning = true;
+  }
+  // 清除 setTimeout
+  if (publicScrapingTimeoutId) {
+    clearTimeout(publicScrapingTimeoutId);
+    publicScrapingTimeoutId = null;
+    wasRunning = true;
+  }
+  if (wasRunning) {
     console.log('[Public Scraping Scheduler] Stopped');
   }
 }

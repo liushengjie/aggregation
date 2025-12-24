@@ -1,5 +1,6 @@
 import express from 'express';
 import { requireAuth } from '../services/auth.js';
+import { schedulerConfigOps } from '../services/database.js';
 import { 
     triggerSync, 
     triggerPublicScraping,
@@ -69,14 +70,133 @@ interface SchedulerConfig {
     opensource: { enabled: boolean; interval: number; initialDelay: number };
 }
 
-let schedulerConfig: SchedulerConfig = {
+// Default configuration
+const defaultConfig: SchedulerConfig = {
     globalFocus: { enabled: false, interval: 30, initialDelay: 1 },
     publicScraping: { enabled: false, interval: 30, initialDelay: 1 },
     hotTrends: { enabled: false, interval: 60, initialDelay: 1 },
     hotDrama: { enabled: false, interval: 1440, initialDelay: 1 },
-    maoyan: { enabled: false, interval: 5, initialDelay: 0.5 }, // 5分钟刷新一次
-    opensource: { enabled: false, interval: 60, initialDelay: 1 }, // 60分钟刷新一次
+    maoyan: { enabled: false, interval: 5, initialDelay: 0.5 },
+    opensource: { enabled: false, interval: 60, initialDelay: 1 },
 };
+
+// Load configuration from database
+function loadSchedulerConfig(): SchedulerConfig {
+    try {
+        const configs = schedulerConfigOps.getAll.all() as Array<{
+            scheduler_name: string;
+            enabled: number;
+            interval_minutes: number;
+            initial_delay_minutes: number;
+        }>;
+
+        const config: SchedulerConfig = { ...defaultConfig };
+
+        for (const row of configs) {
+            const schedulerConfig = {
+                enabled: row.enabled === 1,
+                interval: row.interval_minutes,
+                initialDelay: row.initial_delay_minutes,
+            };
+
+            switch (row.scheduler_name) {
+                case 'globalFocus':
+                    config.globalFocus = schedulerConfig;
+                    break;
+                case 'publicScraping':
+                    config.publicScraping = schedulerConfig;
+                    break;
+                case 'hotTrends':
+                    config.hotTrends = schedulerConfig;
+                    break;
+                case 'hotDrama':
+                    config.hotDrama = schedulerConfig;
+                    break;
+                case 'maoyan':
+                    config.maoyan = schedulerConfig;
+                    break;
+                case 'opensource':
+                    config.opensource = schedulerConfig;
+                    break;
+            }
+        }
+
+        return config;
+    } catch (error) {
+        console.error('[Scheduler] Error loading config from database, using defaults:', error);
+        return defaultConfig;
+    }
+}
+
+// Save a scheduler configuration to database
+function saveSchedulerConfig(schedulerName: string, config: { enabled: boolean; interval: number; initialDelay: number }) {
+    try {
+        schedulerConfigOps.upsert.run(
+            schedulerName,
+            config.enabled ? 1 : 0,
+            config.interval,
+            config.initialDelay
+        );
+    } catch (error) {
+        console.error(`[Scheduler] Error saving config for ${schedulerName}:`, error);
+        throw error;
+    }
+}
+
+// Initialize scheduler configuration from database
+let schedulerConfig: SchedulerConfig = loadSchedulerConfig();
+
+// Start schedulers based on loaded configuration
+function startSchedulersFromConfig() {
+    console.log('[Scheduler] Starting schedulers from saved configuration...');
+    
+    if (schedulerConfig.globalFocus.enabled) {
+        setSchedulerInterval(schedulerConfig.globalFocus.interval);
+        setSchedulerInitialDelay(schedulerConfig.globalFocus.initialDelay);
+        startScheduler(schedulerConfig.globalFocus.interval, schedulerConfig.globalFocus.initialDelay);
+        console.log(`[Scheduler] GlobalFocus scheduler started (interval: ${schedulerConfig.globalFocus.interval}min)`);
+    }
+
+    if (schedulerConfig.publicScraping.enabled) {
+        setPublicScrapingSchedulerInterval(schedulerConfig.publicScraping.interval);
+        setPublicScrapingSchedulerInitialDelay(schedulerConfig.publicScraping.initialDelay);
+        startPublicScrapingScheduler(schedulerConfig.publicScraping.interval, schedulerConfig.publicScraping.initialDelay);
+        console.log(`[Scheduler] PublicScraping scheduler started (interval: ${schedulerConfig.publicScraping.interval}min)`);
+    }
+
+    if (schedulerConfig.hotTrends.enabled) {
+        setHotTrendSchedulerInterval(schedulerConfig.hotTrends.interval);
+        setHotTrendSchedulerInitialDelay(schedulerConfig.hotTrends.initialDelay);
+        startHotTrendScheduler(schedulerConfig.hotTrends.interval, schedulerConfig.hotTrends.initialDelay);
+        console.log(`[Scheduler] HotTrends scheduler started (interval: ${schedulerConfig.hotTrends.interval}min)`);
+    }
+
+    if (schedulerConfig.hotDrama.enabled) {
+        setHotDramaSchedulerInterval(schedulerConfig.hotDrama.interval);
+        setHotDramaSchedulerInitialDelay(schedulerConfig.hotDrama.initialDelay);
+        startHotDramaScheduler(schedulerConfig.hotDrama.interval, schedulerConfig.hotDrama.initialDelay);
+        console.log(`[Scheduler] HotDrama scheduler started (interval: ${schedulerConfig.hotDrama.interval}min)`);
+    }
+
+    if (schedulerConfig.maoyan.enabled) {
+        // 直接启动定时器，startMaoyanScheduler 内部会处理停止和重启
+        startMaoyanScheduler(schedulerConfig.maoyan.interval, schedulerConfig.maoyan.initialDelay);
+        console.log(`[Scheduler] Maoyan scheduler started (interval: ${schedulerConfig.maoyan.interval}min)`);
+    }
+
+    if (schedulerConfig.opensource.enabled) {
+        setOpenSourceSchedulerInterval(schedulerConfig.opensource.interval);
+        setOpenSourceSchedulerInitialDelay(schedulerConfig.opensource.initialDelay);
+        startOpenSourceScheduler(schedulerConfig.opensource.interval, schedulerConfig.opensource.initialDelay);
+        console.log(`[Scheduler] OpenSource scheduler started (interval: ${schedulerConfig.opensource.interval}min)`);
+    }
+}
+
+// Export function to start schedulers on server startup
+export function initializeSchedulers() {
+    schedulerConfig = loadSchedulerConfig();
+    startSchedulersFromConfig();
+}
 
 // Get all scheduler status and config
 router.get('/status', requireAuth, (req, res) => {
@@ -122,6 +242,9 @@ router.post('/config', requireAuth, (req, res) => {
 
         if (globalFocus !== undefined) {
             schedulerConfig.globalFocus = { ...schedulerConfig.globalFocus, ...globalFocus };
+            // Save to database
+            saveSchedulerConfig('globalFocus', schedulerConfig.globalFocus);
+            
             if (schedulerConfig.globalFocus.enabled) {
                 stopScheduler();
                 setSchedulerInterval(schedulerConfig.globalFocus.interval);
@@ -134,6 +257,9 @@ router.post('/config', requireAuth, (req, res) => {
 
         if (publicScraping !== undefined) {
             schedulerConfig.publicScraping = { ...schedulerConfig.publicScraping, ...publicScraping };
+            // Save to database
+            saveSchedulerConfig('publicScraping', schedulerConfig.publicScraping);
+            
             if (schedulerConfig.publicScraping.enabled) {
                 stopPublicScrapingScheduler();
                 setPublicScrapingSchedulerInterval(schedulerConfig.publicScraping.interval);
@@ -146,6 +272,9 @@ router.post('/config', requireAuth, (req, res) => {
 
         if (hotTrends !== undefined) {
             schedulerConfig.hotTrends = { ...schedulerConfig.hotTrends, ...hotTrends };
+            // Save to database
+            saveSchedulerConfig('hotTrends', schedulerConfig.hotTrends);
+            
             if (schedulerConfig.hotTrends.enabled) {
                 stopHotTrendScheduler();
                 setHotTrendSchedulerInterval(schedulerConfig.hotTrends.interval);
@@ -158,6 +287,9 @@ router.post('/config', requireAuth, (req, res) => {
 
         if (hotDrama !== undefined) {
             schedulerConfig.hotDrama = { ...schedulerConfig.hotDrama, ...hotDrama };
+            // Save to database
+            saveSchedulerConfig('hotDrama', schedulerConfig.hotDrama);
+            
             if (schedulerConfig.hotDrama.enabled) {
                 stopHotDramaScheduler();
                 setHotDramaSchedulerInterval(schedulerConfig.hotDrama.interval);
@@ -170,6 +302,9 @@ router.post('/config', requireAuth, (req, res) => {
 
         if (maoyan !== undefined) {
             schedulerConfig.maoyan = { ...schedulerConfig.maoyan, ...maoyan };
+            // Save to database
+            saveSchedulerConfig('maoyan', schedulerConfig.maoyan);
+            
             if (schedulerConfig.maoyan.enabled) {
                 stopMaoyanScheduler();
                 setMaoyanSchedulerInterval(schedulerConfig.maoyan.interval);
@@ -182,6 +317,9 @@ router.post('/config', requireAuth, (req, res) => {
 
         if (opensource !== undefined) {
             schedulerConfig.opensource = { ...schedulerConfig.opensource, ...opensource };
+            // Save to database
+            saveSchedulerConfig('opensource', schedulerConfig.opensource);
+            
             if (schedulerConfig.opensource.enabled) {
                 stopOpenSourceScheduler();
                 setOpenSourceSchedulerInterval(schedulerConfig.opensource.interval);

@@ -7,9 +7,7 @@ import {
   getComingMovies, 
   getTvRanking, 
   getWebSeriesRanking, 
-  getVarietyRanking,
-  getCacheStatus,
-  clearCache 
+  getVarietyRanking
 } from '../services/hotDramaService.js';
 
 const router = express.Router();
@@ -175,34 +173,30 @@ maoyanRouter.get('/variety', async (req, res) => {
 });
 
 /**
- * 获取缓存状态
- * GET /status
- */
-maoyanRouter.get('/status', (req, res) => {
-  const status = getCacheStatus();
-  res.json(status);
-});
-
-/**
  * 强制刷新数据
  * POST /refresh
  */
 maoyanRouter.post('/refresh', async (req, res) => {
   try {
-    clearCache();
-    const data = await getMaoyanData(true);
-    res.json({ 
-      success: true, 
-      message: 'Data refreshed',
-      fetchedAt: data.fetchedAt,
-      counts: {
-        boxOffice: data.boxOffice.length,
-        calendar: data.calendar.length,
-        tvRanking: data.tvRanking.length,
-        webSeriesRanking: data.webSeriesRanking.length,
-        varietyRanking: data.varietyRanking.length,
-      }
-    });
+    const { refreshMaoyanData } = await import('../services/schedulers/hotDramaSchedulerService.js');
+    const result = await refreshMaoyanData();
+    
+    if (result.success && result.data) {
+      res.json({ 
+        success: true, 
+        message: 'Data refreshed',
+        fetchedAt: result.data.fetchedAt,
+        counts: {
+          boxOffice: result.data.boxOffice.length,
+          calendar: result.data.calendar.length,
+          tvRanking: result.data.tvRanking.length,
+          webSeriesRanking: result.data.webSeriesRanking.length,
+          varietyRanking: result.data.varietyRanking.length,
+        }
+      });
+    } else {
+      res.status(500).json({ error: result.error || 'Failed to refresh' });
+    }
   } catch (error: any) {
     console.error('[Maoyan API] Error refreshing:', error);
     res.status(500).json({ error: error.message });

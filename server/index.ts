@@ -10,7 +10,7 @@ import globalFocusRouter from './routes/globalFocus.js';
 import imageProxyRouter from './routes/imageProxy.js';
 import hotTrendsRouter from './routes/hotTrends.js';
 import hotDramaRouter, { maoyanRouter } from './routes/hotDrama.js';
-import schedulerRouter from './routes/scheduler.js';
+import schedulerRouter, { initializeSchedulers } from './routes/scheduler.js';
 import opensourceRouter from './routes/opensource.js';
 import analyticsRouter from './routes/analytics.js';
 
@@ -18,29 +18,68 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+
+// 信任代理（因为请求通过 Nginx 反向代理）
+// 这样 req.secure 和 req.ip 等才能正确工作
+app.set('trust proxy', 1);
+
 const PORT = process.env.PORT || 3351;
 
 // Initialize database
 initDatabase();
 
 // Middleware
-// CORS配置 - 允许前端端口访问
+// CORS配置 - 允许前端访问（支持 HTTP 和 HTTPS）
 const FRONTEND_PORT = process.env.FRONTEND_PORT || 3350;
+const ALLOWED_ORIGINS = [
+    // 开发环境
+    `http://localhost:${FRONTEND_PORT}`,
+    `http://127.0.0.1:${FRONTEND_PORT}`,
+    // 生产环境 HTTP（IP访问）
+    `http://182.92.92.43:${FRONTEND_PORT}`,
+    `http://182.92.92.43`,
+    // 生产环境 HTTPS（域名访问）
+    'https://prism.xin',
+    'https://www.prism.xin',
+];
+
 app.use(cors({
-    origin: [`http://localhost:${FRONTEND_PORT}`, `http://182.92.92.43:${FRONTEND_PORT}`],
+    origin: function (origin, callback) {
+        // 允许没有 origin 的请求（如移动应用、Postman等）
+        if (!origin) return callback(null, true);
+        
+        if (ALLOWED_ORIGINS.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     credentials: true,
 }));
+
 app.use(express.json());
+
 app.use(session({
     secret: process.env.SESSION_SECRET || 'aggregation-secret-key-change-in-production',
     resave: false,
     saveUninitialized: false,
     cookie: {
-        secure: false, // Set to true in production with HTTPS
+        secure: process.env.NODE_ENV === 'production', // 生产环境使用 secure
         httpOnly: true,
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+        sameSite: 'lax',
     },
 }));
+
+// 动态设置 cookie secure（根据实际请求协议）
+app.use((req, res, next) => {
+    // 如果是 HTTPS（通过 Nginx 代理，检查 X-Forwarded-Proto）
+    const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    if (req.session && isSecure) {
+        req.session.cookie.secure = true;
+    }
+    next();
+});
 
 // API Routes
 app.use('/api/auth', authRouter);
@@ -85,6 +124,7 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    console.log(`[Scheduler] All schedulers are controlled via frontend settings page`);
-    // Schedulers will be started/stopped via /api/scheduler/config endpoint
+    console.log(`[Scheduler] Initializing schedulers from database...`);
+    // Initialize schedulers from database configuration
+    initializeSchedulers();
 });

@@ -8,8 +8,22 @@ const getApiBase = () => {
   if (typeof window !== 'undefined') {
     // 浏览器环境
     const hostname = window.location.hostname;
-    const port = hostname === 'localhost' || hostname === '127.0.0.1' ? '3351' : window.location.port || '3351';
-    return `${window.location.protocol}//${hostname}:${port}/api`;
+    const protocol = window.location.protocol;
+    const port = window.location.port;
+    
+    // 如果是默认端口（80/443）或端口为空，不包含端口号
+    // 这样可以通过 Nginx 代理访问，而不需要直接访问后端端口
+    if (!port || port === '80' || port === '443') {
+      return `${protocol}//${hostname}/api`;
+    }
+    
+    // 开发环境（localhost）或非标准端口，使用原逻辑
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return `http://${hostname}:3351/api`;
+    }
+    
+    // 其他情况（生产环境非标准端口）
+    return `${protocol}//${hostname}:${port}/api`;
   }
   // Node.js环境（开发时）
   return 'http://localhost:3351/api';

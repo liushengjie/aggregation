@@ -3,7 +3,7 @@
 // 限流: 40 请求/10秒
 
 import type { MaoyanData, MaoyanBoxOffice, MaoyanRankingItem, MaoyanCalendarMovie } from './scrapers/hotDrama/maoyanScraper.js';
-import { getMaoyanCachedData, refreshMaoyanData } from './schedulers/hotDramaSchedulerService.js';
+import { refreshMaoyanData } from './schedulers/hotDramaSchedulerService.js';
 
 const TMDB_API_KEY = '9d0a3769b77fee44cfbf912cd84e62f1';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
@@ -179,8 +179,125 @@ export const cleanup = async () => {};
 // 猫眼数据服务
 // ============================================
 
-// 缓存有效期（5分钟）
-const CACHE_TTL = 5 * 60 * 1000;
+import { maoyanOps } from './database.js';
+
+/**
+ * 从数据库加载猫眼数据
+ */
+function loadMaoyanDataFromDatabase(): MaoyanData | null {
+  try {
+    // Get latest fetch time
+    const fetchTimeResult = maoyanOps.getLatestFetchTime.get() as { latest_fetch_time: string | null } | undefined;
+    if (!fetchTimeResult?.latest_fetch_time) {
+      return null;
+    }
+    
+    // Load box office
+    const boxOfficeRows = maoyanOps.getLatestBoxOffice.all() as Array<{
+      rank: number;
+      movieId: string;
+      title: string;
+      boxOffice: number;
+      boxOfficeUnit: string;
+      releaseDate: string | null;
+      poster: string | null;
+      trend: string | null;
+    }>;
+    
+    // Load calendar
+    const calendarRows = maoyanOps.getLatestCalendar.all() as Array<{
+      movieId: string;
+      title: string;
+      releaseDate: string | null;
+      poster: string | null;
+      wantCount: number;
+    }>;
+    
+    // Load rankings
+    const tvRows = maoyanOps.getLatestRankings.all('tv') as Array<{
+      rank: number;
+      itemId: string;
+      title: string;
+      score: number;
+      poster: string | null;
+      info: string | null;
+      category: 'tv' | 'webSeries' | 'variety';
+    }>;
+    
+    const webRows = maoyanOps.getLatestRankings.all('webSeries') as Array<{
+      rank: number;
+      itemId: string;
+      title: string;
+      score: number;
+      poster: string | null;
+      info: string | null;
+      category: 'tv' | 'webSeries' | 'variety';
+    }>;
+    
+    const varietyRows = maoyanOps.getLatestRankings.all('variety') as Array<{
+      rank: number;
+      itemId: string;
+      title: string;
+      score: number;
+      poster: string | null;
+      info: string | null;
+      category: 'tv' | 'webSeries' | 'variety';
+    }>;
+    
+    const data: MaoyanData = {
+      boxOffice: boxOfficeRows.map(row => ({
+        rank: row.rank,
+        movieId: row.movieId,
+        title: row.title,
+        boxOffice: row.boxOffice,
+        boxOfficeUnit: row.boxOfficeUnit,
+        releaseDate: row.releaseDate || '',
+        poster: row.poster || undefined,
+        trend: (row.trend as 'up' | 'down' | 'same') || 'same',
+      })),
+      calendar: calendarRows.map(row => ({
+        movieId: row.movieId,
+        title: row.title,
+        releaseDate: row.releaseDate || '',
+        poster: row.poster || undefined,
+        wantCount: row.wantCount,
+      })),
+      tvRanking: tvRows.map(row => ({
+        rank: row.rank,
+        itemId: row.itemId,
+        title: row.title,
+        score: row.score,
+        poster: row.poster || undefined,
+        info: row.info || undefined,
+        category: row.category as 'tv',
+      })),
+      webSeriesRanking: webRows.map(row => ({
+        rank: row.rank,
+        itemId: row.itemId,
+        title: row.title,
+        score: row.score,
+        poster: row.poster || undefined,
+        info: row.info || undefined,
+        category: row.category as 'webSeries',
+      })),
+      varietyRanking: varietyRows.map(row => ({
+        rank: row.rank,
+        itemId: row.itemId,
+        title: row.title,
+        score: row.score,
+        poster: row.poster || undefined,
+        info: row.info || undefined,
+        category: row.category as 'variety',
+      })),
+      fetchedAt: fetchTimeResult.latest_fetch_time,
+    };
+    
+    return data;
+  } catch (error: any) {
+    console.error('[MaoyanService] Error loading data from database:', error.message);
+    return null;
+  }
+}
 
 // 空数据
 const EMPTY_DATA: MaoyanData = {
@@ -193,98 +310,57 @@ const EMPTY_DATA: MaoyanData = {
 };
 
 /**
- * 获取猫眼数据（优先使用调度器缓存）
+ * 获取猫眼数据（直接从数据库读取）
  */
 export async function getMaoyanData(forceRefresh: boolean = false): Promise<MaoyanData> {
-  const cached = getMaoyanCachedData();
-  const now = Date.now();
-  
-  // 如果不强制刷新且缓存有效，返回缓存数据
-  if (!forceRefresh && cached.data && (now - cached.lastFetchTime) < CACHE_TTL) {
-    console.log('[MaoyanService] Returning cached data from scheduler');
-    return cached.data;
+  // 如果强制刷新，触发抓取
+  if (forceRefresh) {
+    console.log('[MaoyanService] Force refresh requested, triggering scrape...');
+    const { refreshMaoyanData } = await import('./schedulers/hotDramaSchedulerService.js');
+    await refreshMaoyanData();
   }
   
-  // 如果正在抓取中，返回缓存数据
-  if (cached.isScraping) {
-    console.log('[MaoyanService] Scraping in progress, returning cached data');
-    return cached.data || EMPTY_DATA;
-  }
-  
-  // 触发刷新
-  console.log('[MaoyanService] Triggering data refresh...');
-  const result = await refreshMaoyanData();
-  
-  if (result.success && result.data) {
-    return result.data;
-  }
-  
-  // 返回缓存数据或空数据
-  return cached.data || EMPTY_DATA;
+  // 直接从数据库读取
+  const data = loadMaoyanDataFromDatabase();
+  return data || EMPTY_DATA;
 }
 
 /**
- * 获取票房数据
+ * 获取票房数据（直接从数据库读取）
  */
 export async function getBoxOffice(): Promise<MaoyanBoxOffice[]> {
-  const data = await getMaoyanData();
-  return data.boxOffice;
+  const data = loadMaoyanDataFromDatabase();
+  return data?.boxOffice || [];
 }
 
 /**
- * 获取即将上映电影
+ * 获取即将上映电影（直接从数据库读取）
  */
 export async function getComingMovies(): Promise<MaoyanCalendarMovie[]> {
-  const data = await getMaoyanData();
-  return data.calendar;
+  const data = loadMaoyanDataFromDatabase();
+  return data?.calendar || [];
 }
 
 /**
- * 获取电视剧排行
+ * 获取电视剧排行（直接从数据库读取）
  */
 export async function getTvRanking(): Promise<MaoyanRankingItem[]> {
-  const data = await getMaoyanData();
-  return data.tvRanking;
+  const data = loadMaoyanDataFromDatabase();
+  return data?.tvRanking || [];
 }
 
 /**
- * 获取网络剧排行
+ * 获取网络剧排行（直接从数据库读取）
  */
 export async function getWebSeriesRanking(): Promise<MaoyanRankingItem[]> {
-  const data = await getMaoyanData();
-  return data.webSeriesRanking;
+  const data = loadMaoyanDataFromDatabase();
+  return data?.webSeriesRanking || [];
 }
 
 /**
- * 获取综艺排行
+ * 获取综艺排行（直接从数据库读取）
  */
 export async function getVarietyRanking(): Promise<MaoyanRankingItem[]> {
-  const data = await getMaoyanData();
-  return data.varietyRanking;
-}
-
-/**
- * 获取缓存状态
- */
-export function getCacheStatus(): { 
-  hasCachedData: boolean; 
-  lastFetchTime: string | null; 
-  cacheAge: number;
-  isFetching: boolean;
-} {
-  const cached = getMaoyanCachedData();
-  return {
-    hasCachedData: cached.data !== null,
-    lastFetchTime: cached.lastFetchTime ? new Date(cached.lastFetchTime).toISOString() : null,
-    cacheAge: cached.lastFetchTime ? Date.now() - cached.lastFetchTime : 0,
-    isFetching: cached.isScraping,
-  };
-}
-
-/**
- * 清除缓存（触发重新抓取）
- */
-export async function clearCache(): Promise<void> {
-  console.log('[MaoyanService] Clearing cache and refreshing...');
-  await refreshMaoyanData();
+  const data = loadMaoyanDataFromDatabase();
+  return data?.varietyRanking || [];
 }

@@ -4,6 +4,7 @@ import { refreshGitHubTrending } from '../opensourceService.js';
 
 let isScraping = false;
 let schedulerInterval: NodeJS.Timeout | null = null;
+let schedulerTimeout: NodeJS.Timeout | null = null;
 let SCRAPE_INTERVAL = 60 * 60 * 1000; // Default: 60 minutes
 let INITIAL_DELAY = 1 * 60 * 1000; // Default: 1 minute
 
@@ -109,9 +110,10 @@ export function startOpenSourceScheduler(
   intervalMinutes?: number,
   initialDelayMinutes?: number
 ): void {
-  if (schedulerInterval) {
-    console.log('[OpenSourceScheduler] Scheduler already running');
-    return;
+  // 如果定时器已经在运行，先停止它
+  if (schedulerInterval || schedulerTimeout) {
+    console.log('[OpenSourceScheduler] Stopping existing scheduler before restarting');
+    stopOpenSourceScheduler();
   }
 
   if (intervalMinutes !== undefined) {
@@ -124,7 +126,8 @@ export function startOpenSourceScheduler(
   console.log(`[OpenSourceScheduler] Starting scheduler: interval=${SCRAPE_INTERVAL / 60000}min, initialDelay=${INITIAL_DELAY / 60000}min`);
 
   // Initial delay
-  setTimeout(() => {
+  schedulerTimeout = setTimeout(() => {
+    schedulerTimeout = null;
     refreshOpenSourceData().catch((error) => {
       console.error('[OpenSourceScheduler] Error in scheduled refresh:', error);
     });
@@ -142,9 +145,20 @@ export function startOpenSourceScheduler(
  * Stop the scheduler
  */
 export function stopOpenSourceScheduler(): void {
+  let wasRunning = false;
+  // 清除 setInterval
   if (schedulerInterval) {
     clearInterval(schedulerInterval);
     schedulerInterval = null;
+    wasRunning = true;
+  }
+  // 清除 setTimeout
+  if (schedulerTimeout) {
+    clearTimeout(schedulerTimeout);
+    schedulerTimeout = null;
+    wasRunning = true;
+  }
+  if (wasRunning) {
     console.log('[OpenSourceScheduler] Scheduler stopped');
   }
 }

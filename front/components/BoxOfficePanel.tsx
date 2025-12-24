@@ -56,21 +56,26 @@ const BoxOfficePanel: React.FC<BoxOfficePanelProps> = ({ onSearch }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
 
-  const loadData = useCallback(async (forceRefresh: boolean = false) => {
+  const loadData = useCallback(async (isManualRefresh: boolean = false) => {
     try {
-      if (forceRefresh) setRefreshing(true);
-      const result = await maoyanApi.getAll(forceRefresh);
+      if (isManualRefresh) {
+        setRefreshing(true);
+      }
+      // 直接从数据库获取最新数据，不触发采集
+      const result = await maoyanApi.getAll(false);
       setData(result);
       setLastUpdate(result.fetchedAt);
     } catch (error) {
       console.error('Failed to load maoyan data:', error);
     } finally {
       setLoading(false);
-      setRefreshing(false);
+      if (isManualRefresh) {
+        setRefreshing(false);
+      }
     }
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { loadData(false); }, [loadData]);
 
   useEffect(() => {
     const interval = setInterval(() => loadData(false), AUTO_REFRESH_INTERVAL);
@@ -103,7 +108,11 @@ const BoxOfficePanel: React.FC<BoxOfficePanelProps> = ({ onSearch }) => {
     return 'bg-slate-100 text-slate-500';
   };
 
-  const handleRefresh = () => loadData(true);
+  // 刷新按钮：从数据库获取最新数据，不触发采集
+  // 点击后开始动画，刷新完成后停止
+  const handleRefresh = () => {
+    loadData(true);
+  };
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -116,8 +125,20 @@ const BoxOfficePanel: React.FC<BoxOfficePanelProps> = ({ onSearch }) => {
           </div>
           <div className="flex items-center gap-2">
             {lastUpdate && <span className="text-[10px] text-slate-400">{formatUpdateTime(lastUpdate)} 更新</span>}
-            <button onClick={handleRefresh} disabled={refreshing} className="p-1 text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-50">
-              <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+            <button 
+              onClick={handleRefresh} 
+              disabled={refreshing} 
+              className="p-1.5 text-slate-400 hover:text-slate-600 transition-all duration-300 disabled:opacity-50 hover:bg-white/50 rounded-md active:scale-95"
+              title="刷新数据"
+            >
+              <RefreshCw 
+                size={14} 
+                className={`transition-transform duration-300 ${
+                  refreshing 
+                    ? 'animate-spin' 
+                    : 'hover:rotate-180'
+                }`} 
+              />
             </button>
           </div>
         </div>

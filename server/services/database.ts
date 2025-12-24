@@ -59,11 +59,22 @@ function initSchema() {
       shares INTEGER DEFAULT 0,
       views INTEGER DEFAULT 0,
       tags TEXT,
+      category TEXT DEFAULT 'other',
       fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (account_id) REFERENCES platform_accounts(id),
       UNIQUE(account_id, external_id)
     )
   `);
+  
+  // Add category column if not exists (for existing databases)
+  try {
+    db.exec(`ALTER TABLE social_items ADD COLUMN category TEXT DEFAULT 'other'`);
+  } catch (e: any) {
+    // Column already exists, ignore
+    if (!e.message?.includes('duplicate column')) {
+      console.warn('[Database] Error adding category column to social_items:', e.message);
+    }
+  }
 
   // Hot trends table
   db.exec(`
@@ -98,10 +109,21 @@ function initSchema() {
       shares INTEGER DEFAULT 0,
       views INTEGER DEFAULT 0,
       tags TEXT,
+      category TEXT DEFAULT 'other',
       fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(platform, source_url, external_id)
     )
   `);
+  
+  // Add category column if not exists (for existing databases)
+  try {
+    db.exec(`ALTER TABLE public_social_items ADD COLUMN category TEXT DEFAULT 'other'`);
+  } catch (e: any) {
+    // Column already exists, ignore
+    if (!e.message?.includes('duplicate column')) {
+      console.warn('[Database] Error adding category column to public_social_items:', e.message);
+    }
+  }
 
   // Create indexes for hot_trends
   db.exec(`CREATE INDEX IF NOT EXISTS idx_hot_trends_platform_category ON hot_trends(platform, category_id)`);
@@ -111,6 +133,10 @@ function initSchema() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_public_social_items_platform ON public_social_items(platform)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_public_social_items_source_label ON public_social_items(source_label)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_public_social_items_fetched_at ON public_social_items(fetched_at)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_public_social_items_category ON public_social_items(category)`);
+  
+  // Create indexes for social_items category
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_social_items_category ON social_items(category)`);
 
   // Hot dramas table
   db.exec(`
@@ -186,6 +212,68 @@ function initSchema() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_analytics_events_session_id ON analytics_events(session_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_analytics_events_created_at ON analytics_events(created_at)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_analytics_events_date ON analytics_events(DATE(created_at))`);
+
+  // Scheduler configuration table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS scheduler_config (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      scheduler_name TEXT NOT NULL UNIQUE,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      interval_minutes INTEGER NOT NULL,
+      initial_delay_minutes REAL NOT NULL DEFAULT 1,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Maoyan box office table (票房)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS maoyan_box_office (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      rank INTEGER NOT NULL,
+      movie_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      box_office REAL DEFAULT 0,
+      box_office_unit TEXT DEFAULT '万',
+      release_date TEXT,
+      poster TEXT,
+      trend TEXT,
+      fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Maoyan calendar table (即将上映)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS maoyan_calendar (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      movie_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      release_date TEXT,
+      poster TEXT,
+      want_count INTEGER DEFAULT 0,
+      fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Maoyan rankings table (排行：电视剧、网络剧、综艺)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS maoyan_rankings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      rank INTEGER NOT NULL,
+      item_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      score REAL DEFAULT 0,
+      poster TEXT,
+      info TEXT,
+      category TEXT NOT NULL CHECK(category IN ('tv', 'webSeries', 'variety')),
+      fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Create indexes for maoyan tables
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_maoyan_box_office_fetched_at ON maoyan_box_office(fetched_at DESC)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_maoyan_calendar_fetched_at ON maoyan_calendar(fetched_at DESC)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_maoyan_rankings_category ON maoyan_rankings(category)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_maoyan_rankings_fetched_at ON maoyan_rankings(fetched_at DESC)`);
 }
 
 // Migration function to update platform_accounts table CHECK constraint
@@ -410,8 +498,8 @@ export const accountOps = {
 // Social item operations
 export const itemOps = {
   upsert: db.prepare(`
-    INSERT INTO social_items (account_id, platform, external_id, title, author, thumbnail, url, content, likes, comments, shares, views, tags)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO social_items (account_id, platform, external_id, title, author, thumbnail, url, content, likes, comments, shares, views, tags, category)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(account_id, external_id) DO UPDATE SET
       title = excluded.title,
       author = excluded.author,
@@ -423,6 +511,7 @@ export const itemOps = {
       shares = excluded.shares,
       views = excluded.views,
       tags = excluded.tags,
+      category = excluded.category,
       fetched_at = datetime('now')
   `),
 
@@ -440,7 +529,7 @@ export const itemOps = {
   `),
 
   findByUser: db.prepare(`
-    SELECT id, account_id, platform, external_id, title, author, thumbnail, url, content, likes, comments, shares, views, tags, fetched_at FROM (
+    SELECT id, account_id, platform, external_id, title, author, thumbnail, url, content, likes, comments, shares, views, tags, category, fetched_at FROM (
       SELECT si.*, ROW_NUMBER() OVER (PARTITION BY pa.user_id, si.title, si.platform ORDER BY si.fetched_at DESC, si.id DESC) as rn
       FROM social_items si
       JOIN platform_accounts pa ON si.account_id = pa.id
@@ -451,7 +540,7 @@ export const itemOps = {
   `),
 
   findByUserAndPlatform: db.prepare(`
-    SELECT id, account_id, platform, external_id, title, author, thumbnail, url, content, likes, comments, shares, views, tags, fetched_at FROM (
+    SELECT id, account_id, platform, external_id, title, author, thumbnail, url, content, likes, comments, shares, views, tags, category, fetched_at FROM (
       SELECT si.*, ROW_NUMBER() OVER (PARTITION BY pa.user_id, si.title, si.platform ORDER BY si.fetched_at DESC, si.id DESC) as rn
       FROM social_items si
       JOIN platform_accounts pa ON si.account_id = pa.id
@@ -459,6 +548,40 @@ export const itemOps = {
     ) WHERE rn = 1
     ORDER BY fetched_at DESC, id DESC
     LIMIT ? OFFSET ?
+  `),
+  
+  findByUserAndCategory: db.prepare(`
+    SELECT id, account_id, platform, external_id, title, author, thumbnail, url, content, likes, comments, shares, views, tags, category, fetched_at FROM (
+      SELECT si.*, ROW_NUMBER() OVER (PARTITION BY pa.user_id, si.title, si.platform ORDER BY si.fetched_at DESC, si.id DESC) as rn
+      FROM social_items si
+      JOIN platform_accounts pa ON si.account_id = pa.id
+      WHERE pa.user_id = ? AND si.category = ?
+    ) WHERE rn = 1
+    ORDER BY fetched_at DESC, id DESC
+    LIMIT ? OFFSET ?
+  `),
+  
+  findByUserPlatformAndCategory: db.prepare(`
+    SELECT id, account_id, platform, external_id, title, author, thumbnail, url, content, likes, comments, shares, views, tags, category, fetched_at FROM (
+      SELECT si.*, ROW_NUMBER() OVER (PARTITION BY pa.user_id, si.title, si.platform ORDER BY si.fetched_at DESC, si.id DESC) as rn
+      FROM social_items si
+      JOIN platform_accounts pa ON si.account_id = pa.id
+      WHERE pa.user_id = ? AND si.platform = ? AND si.category = ?
+    ) WHERE rn = 1
+    ORDER BY fetched_at DESC, id DESC
+    LIMIT ? OFFSET ?
+  `),
+  
+  countByUserAndCategory: db.prepare(`
+    SELECT COUNT(DISTINCT si.title || '|' || si.platform) as count FROM social_items si
+    JOIN platform_accounts pa ON si.account_id = pa.id
+    WHERE pa.user_id = ? AND si.category = ?
+  `),
+  
+  countByUserPlatformAndCategory: db.prepare(`
+    SELECT COUNT(DISTINCT si.title) as count FROM social_items si
+    JOIN platform_accounts pa ON si.account_id = pa.id
+    WHERE pa.user_id = ? AND si.platform = ? AND si.category = ?
   `),
 
   findById: db.prepare(`
@@ -570,8 +693,8 @@ export const hotTrendOps = {
 export const publicItemOps = {
   // Upsert a public social item
   upsert: db.prepare(`
-    INSERT INTO public_social_items (platform, source_url, source_label, external_id, title, author, thumbnail, url, content, likes, comments, shares, views, tags)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO public_social_items (platform, source_url, source_label, external_id, title, author, thumbnail, url, content, likes, comments, shares, views, tags, category)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(platform, source_url, external_id) DO UPDATE SET
       title = excluded.title,
       author = excluded.author,
@@ -583,6 +706,7 @@ export const publicItemOps = {
       shares = excluded.shares,
       views = excluded.views,
       tags = excluded.tags,
+      category = excluded.category,
       fetched_at = datetime('now')
   `),
 
@@ -612,6 +736,33 @@ export const publicItemOps = {
   // Get count by platform
   countByPlatform: db.prepare(`
     SELECT platform, COUNT(*) as count FROM public_social_items GROUP BY platform
+  `),
+
+  // Get public items by category
+  findByCategory: db.prepare(`
+    SELECT * FROM public_social_items
+    WHERE category = ?
+    ORDER BY fetched_at DESC, id DESC
+    LIMIT ? OFFSET ?
+  `),
+
+  // Get public items by platform and category
+  findByPlatformAndCategory: db.prepare(`
+    SELECT * FROM public_social_items
+    WHERE platform = ? AND category = ?
+    ORDER BY fetched_at DESC, id DESC
+    LIMIT ? OFFSET ?
+  `),
+
+  // Count by category
+  countByCategory: db.prepare(`
+    SELECT category, COUNT(*) as count FROM public_social_items GROUP BY category
+  `),
+
+  // Count by platform and category
+  countByPlatformAndCategory: db.prepare(`
+    SELECT COUNT(*) as count FROM public_social_items
+    WHERE platform = ? AND category = ?
   `),
 
   // Delete old items (older than 7 days)
@@ -868,6 +1019,107 @@ export const analyticsOps = {
   // Delete old events (older than specified days)
   deleteOld: db.prepare(`
     DELETE FROM analytics_events WHERE created_at < datetime('now', ?)
+  `),
+};
+
+// Maoyan data operations
+export const maoyanOps = {
+  // Box Office operations
+  deleteAllBoxOffice: db.prepare(`DELETE FROM maoyan_box_office`),
+  insertBoxOffice: db.prepare(`
+    INSERT INTO maoyan_box_office (rank, movie_id, title, box_office, box_office_unit, release_date, poster, trend, fetched_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `),
+  getLatestBoxOffice: db.prepare(`
+    SELECT rank, movie_id as movieId, title, box_office as boxOffice, box_office_unit as boxOfficeUnit, release_date as releaseDate, poster, trend
+    FROM maoyan_box_office
+    ORDER BY fetched_at DESC, rank ASC
+    LIMIT 50
+  `),
+
+  // Calendar operations
+  deleteAllCalendar: db.prepare(`DELETE FROM maoyan_calendar`),
+  insertCalendar: db.prepare(`
+    INSERT INTO maoyan_calendar (movie_id, title, release_date, poster, want_count, fetched_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `),
+  getLatestCalendar: db.prepare(`
+    SELECT movie_id as movieId, title, release_date as releaseDate, poster, want_count as wantCount
+    FROM maoyan_calendar
+    ORDER BY fetched_at DESC
+    LIMIT 50
+  `),
+
+  // Rankings operations
+  deleteAllRankings: db.prepare(`DELETE FROM maoyan_rankings`),
+  deleteRankingsByCategory: db.prepare(`DELETE FROM maoyan_rankings WHERE category = ?`),
+  insertRanking: db.prepare(`
+    INSERT INTO maoyan_rankings (rank, item_id, title, score, poster, info, category, fetched_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `),
+  getLatestRankings: db.prepare(`
+    SELECT rank, item_id as itemId, title, score, poster, info, category
+    FROM maoyan_rankings
+    WHERE category = ?
+    ORDER BY fetched_at DESC, rank ASC
+    LIMIT 50
+  `),
+  getAllLatestRankings: db.prepare(`
+    SELECT rank, item_id as itemId, title, score, poster, info, category
+    FROM maoyan_rankings
+    ORDER BY fetched_at DESC, category, rank ASC
+    LIMIT 150
+  `),
+  
+  // Get latest fetch time
+  getLatestFetchTime: db.prepare(`
+    SELECT MAX(fetched_at) as latest_fetch_time
+    FROM (
+      SELECT fetched_at FROM maoyan_box_office
+      UNION ALL
+      SELECT fetched_at FROM maoyan_calendar
+      UNION ALL
+      SELECT fetched_at FROM maoyan_rankings
+    )
+  `),
+};
+
+// Scheduler configuration operations
+export const schedulerConfigOps = {
+  // Get all scheduler configurations
+  getAll: db.prepare(`
+    SELECT scheduler_name, enabled, interval_minutes, initial_delay_minutes
+    FROM scheduler_config
+  `),
+
+  // Get a specific scheduler configuration
+  getByName: db.prepare(`
+    SELECT scheduler_name, enabled, interval_minutes, initial_delay_minutes
+    FROM scheduler_config
+    WHERE scheduler_name = ?
+  `),
+
+  // Insert or update (upsert) a scheduler configuration
+  upsert: db.prepare(`
+    INSERT INTO scheduler_config (scheduler_name, enabled, interval_minutes, initial_delay_minutes, updated_at)
+    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(scheduler_name) DO UPDATE SET
+      enabled = excluded.enabled,
+      interval_minutes = excluded.interval_minutes,
+      initial_delay_minutes = excluded.initial_delay_minutes,
+      updated_at = CURRENT_TIMESTAMP
+  `),
+
+  // Update a specific scheduler configuration
+  update: db.prepare(`
+    UPDATE scheduler_config
+    SET enabled = ?, interval_minutes = ?, initial_delay_minutes = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE scheduler_name = ?
+  `),
+
+  // Delete a scheduler configuration (usually not needed, but available)
+  delete: db.prepare(`
+    DELETE FROM scheduler_config WHERE scheduler_name = ?
   `),
 };
 

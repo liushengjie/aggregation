@@ -114,34 +114,35 @@ const HotTrendsView: React.FC = () => {
         init();
     }, [init]);
 
+    // 全局刷新：从数据库获取最新数据，不触发采集
     const handleGlobalSync = async () => {
         setGlobalLoading(true);
         try {
-            await hotTrendsApi.syncAll();
-            await new Promise(resolve => setTimeout(resolve, 3000));
             const data = await hotTrendsApi.getMeta();
             setPlatformsMeta(data.platforms);
             await loadAllTrends(data.platforms);
         } catch (err) {
-            console.error('Error syncing hot trends:', err);
+            console.error('Error refreshing hot trends:', err);
             init();
         } finally {
             setGlobalLoading(false);
         }
     };
 
+    // 单个平台刷新：从数据库获取最新数据，不触发采集
     const handlePlatformSync = async (platformId: string) => {
         setPlatformsData(prev => ({
             ...prev,
             [platformId]: { ...prev[platformId], loading: true }
         }));
         try {
-            await hotTrendsApi.syncPlatform(platformId);
-            await new Promise(resolve => setTimeout(resolve, 4000));
             await loadPlatformTrends(platformId, platformsData[platformId]?.activeCategory);
         } catch (err) {
-            console.error(`Error syncing ${platformId}:`, err);
-            await loadPlatformTrends(platformId, platformsData[platformId]?.activeCategory);
+            console.error(`Error refreshing ${platformId}:`, err);
+            setPlatformsData(prev => ({
+                ...prev,
+                [platformId]: { ...prev[platformId], loading: false }
+            }));
         }
     };
 
@@ -194,9 +195,17 @@ const HotTrendsView: React.FC = () => {
                     <button
                         onClick={() => handlePlatformSync(platform.id)}
                         disabled={data.loading}
-                        className="p-1.5 text-white/80 hover:text-white hover:bg-white/20 rounded-md transition-all relative z-10"
+                        className="p-1.5 text-white/80 hover:text-white hover:bg-white/20 rounded-md transition-all duration-300 relative z-10 active:scale-95"
+                        title="刷新数据"
                     >
-                        <RefreshCw size={16} className={data.loading ? 'animate-spin' : ''} />
+                        <RefreshCw 
+                            size={16} 
+                            className={`transition-transform duration-300 ${
+                                data.loading 
+                                    ? 'animate-spin' 
+                                    : 'hover:rotate-180'
+                            }`} 
+                        />
                     </button>
                 </div>
 

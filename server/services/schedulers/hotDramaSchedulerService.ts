@@ -1,7 +1,7 @@
 import { scrapeKDocs } from '../scrapers/hotDrama/kdocsScraper.js';
-import { scrapeMaoyanData, MaoyanData } from '../scrapers/hotDrama/maoyanScraper.js';
+import { scrapeMaoyanData, MaoyanData, MaoyanBoxOffice, MaoyanRankingItem, MaoyanCalendarMovie } from '../scrapers/hotDrama/maoyanScraper.js';
 import { searchTMDB } from '../hotDramaService.js';
-import { hotDramaOps } from '../database.js';
+import { hotDramaOps, maoyanOps } from '../database.js';
 
 // ==================== KDocs 热剧抓取 ====================
 
@@ -139,6 +139,7 @@ export async function refreshHotDramaData(): Promise<{ success: boolean; count: 
 let KDOCS_INTERVAL = 1440 * 60 * 1000; // 24 hours
 let KDOCS_INITIAL_DELAY = 1 * 60 * 1000; // 1 minute
 let kdocsSchedulerInterval: NodeJS.Timeout | null = null;
+let kdocsSchedulerTimeout: NodeJS.Timeout | null = null;
 
 export function setHotDramaSchedulerInterval(intervalMinutes: number): void {
     KDOCS_INTERVAL = intervalMinutes * 60 * 1000;
@@ -165,9 +166,10 @@ export function getHotDramaSchedulerInitialDelay(): number {
 }
 
 export function startHotDramaScheduler(intervalMinutes?: number, initialDelayMinutes?: number): void {
-    if (kdocsSchedulerInterval) {
-        console.log('[HotDramaScheduler] KDocs scheduler already running');
-        return;
+    // 如果定时器已经在运行，先停止它
+    if (kdocsSchedulerInterval || kdocsSchedulerTimeout) {
+        console.log('[HotDramaScheduler] Stopping existing KDocs scheduler before restarting');
+        stopHotDramaScheduler();
     }
 
     if (intervalMinutes !== undefined) KDOCS_INTERVAL = intervalMinutes * 60 * 1000;
@@ -175,7 +177,8 @@ export function startHotDramaScheduler(intervalMinutes?: number, initialDelayMin
 
     console.log(`[HotDramaScheduler] Starting KDocs scheduler (initial delay: ${KDOCS_INITIAL_DELAY / 1000 / 60} min, interval: ${KDOCS_INTERVAL / 1000 / 60} min)`);
 
-    setTimeout(() => {
+    kdocsSchedulerTimeout = setTimeout(() => {
+        kdocsSchedulerTimeout = null;
         refreshHotDramaData();
         kdocsSchedulerInterval = setInterval(() => {
             refreshHotDramaData();
@@ -184,9 +187,20 @@ export function startHotDramaScheduler(intervalMinutes?: number, initialDelayMin
 }
 
 export function stopHotDramaScheduler(): void {
+    let wasRunning = false;
+    // 清除 setInterval
     if (kdocsSchedulerInterval) {
         clearInterval(kdocsSchedulerInterval);
         kdocsSchedulerInterval = null;
+        wasRunning = true;
+    }
+    // 清除 setTimeout
+    if (kdocsSchedulerTimeout) {
+        clearTimeout(kdocsSchedulerTimeout);
+        kdocsSchedulerTimeout = null;
+        wasRunning = true;
+    }
+    if (wasRunning) {
         console.log('[HotDramaScheduler] KDocs scheduler stopped');
     }
 }
@@ -198,8 +212,71 @@ export function isHotDramaScraping(): boolean {
 // ==================== 猫眼排行榜抓取 ====================
 
 let isMaoyanScraping = false;
-let maoyanCachedData: MaoyanData | null = null;
-let maoyanLastFetchTime: number = 0;
+
+/**
+ * Save Maoyan data to database
+ */
+function saveMaoyanDataToDatabase(data: MaoyanData): void {
+    try {
+        const now = new Date().toISOString();
+        
+        // Delete old data (clear all before inserting new data)
+        maoyanOps.deleteAllBoxOffice.run();
+        maoyanOps.deleteAllCalendar.run();
+        maoyanOps.deleteAllRankings.run();
+        
+        // Save box office data
+        for (const item of data.boxOffice) {
+            maoyanOps.insertBoxOffice.run(
+                item.rank,
+                item.movieId,
+                item.title,
+                item.boxOffice,
+                item.boxOfficeUnit,
+                item.releaseDate || null,
+                item.poster || null,
+                item.trend || null,
+                now
+            );
+        }
+        
+        // Save calendar data
+        for (const item of data.calendar) {
+            maoyanOps.insertCalendar.run(
+                item.movieId,
+                item.title,
+                item.releaseDate || null,
+                item.poster || null,
+                item.wantCount || 0,
+                now
+            );
+        }
+        
+        // Save rankings data
+        const saveRankings = (items: MaoyanRankingItem[]) => {
+            for (const item of items) {
+                maoyanOps.insertRanking.run(
+                    item.rank,
+                    item.itemId,
+                    item.title,
+                    item.score,
+                    item.poster || null,
+                    item.info || null,
+                    item.category,
+                    now
+                );
+            }
+        };
+        
+        saveRankings(data.tvRanking);
+        saveRankings(data.webSeriesRanking);
+        saveRankings(data.varietyRanking);
+        
+        console.log(`[MaoyanScheduler] Saved ${data.boxOffice.length} box office, ${data.calendar.length} calendar, ${data.tvRanking.length + data.webSeriesRanking.length + data.varietyRanking.length} rankings to database`);
+    } catch (error: any) {
+        console.error('[MaoyanScheduler] Error saving data to database:', error.message);
+    }
+}
 
 /**
  * Refresh Maoyan ranking data
@@ -207,7 +284,7 @@ let maoyanLastFetchTime: number = 0;
 export async function refreshMaoyanData(): Promise<{ success: boolean; data: MaoyanData | null; error?: string }> {
     if (isMaoyanScraping) {
         console.log('[MaoyanScheduler] Scraping already in progress, skipping...');
-        return { success: false, data: maoyanCachedData, error: 'Already scraping' };
+        return { success: false, data: null, error: 'Already scraping' };
     }
 
     isMaoyanScraping = true;
@@ -220,37 +297,28 @@ export async function refreshMaoyanData(): Promise<{ success: boolean; data: Mao
                       data.tvRanking.length + data.webSeriesRanking.length + data.varietyRanking.length;
         
         if (total > 0) {
-            maoyanCachedData = data;
-            maoyanLastFetchTime = Date.now();
-            console.log(`[MaoyanScheduler] Successfully fetched ${total} items`);
+            // Save to database
+            saveMaoyanDataToDatabase(data);
+            console.log(`[MaoyanScheduler] Successfully fetched ${total} items and saved to database`);
             return { success: true, data };
         } else {
             console.log('[MaoyanScheduler] No data fetched');
-            return { success: false, data: maoyanCachedData, error: 'No data fetched' };
+            return { success: false, data: null, error: 'No data fetched' };
         }
     } catch (error: any) {
         console.error('[MaoyanScheduler] Error refreshing Maoyan data:', error.message);
-        return { success: false, data: maoyanCachedData, error: error.message };
+        return { success: false, data: null, error: error.message };
     } finally {
         isMaoyanScraping = false;
     }
 }
 
-/**
- * Get cached Maoyan data
- */
-export function getMaoyanCachedData(): { data: MaoyanData | null; lastFetchTime: number; isScraping: boolean } {
-    return {
-        data: maoyanCachedData,
-        lastFetchTime: maoyanLastFetchTime,
-        isScraping: isMaoyanScraping,
-    };
-}
 
 // Maoyan Scheduler
 let MAOYAN_INTERVAL = 5 * 60 * 1000; // 5 minutes (猫眼数据更新频繁)
 let MAOYAN_INITIAL_DELAY = 0.5 * 60 * 1000; // 30 seconds
 let maoyanSchedulerInterval: NodeJS.Timeout | null = null;
+let maoyanSchedulerTimeout: NodeJS.Timeout | null = null;
 
 export function setMaoyanSchedulerInterval(intervalMinutes: number): void {
     MAOYAN_INTERVAL = intervalMinutes * 60 * 1000;
@@ -277,9 +345,10 @@ export function getMaoyanSchedulerInitialDelay(): number {
 }
 
 export function startMaoyanScheduler(intervalMinutes?: number, initialDelayMinutes?: number): void {
-    if (maoyanSchedulerInterval) {
-        console.log('[MaoyanScheduler] Scheduler already running');
-        return;
+    // 如果定时器已经在运行，先停止它
+    if (maoyanSchedulerInterval || maoyanSchedulerTimeout) {
+        console.log('[MaoyanScheduler] Stopping existing scheduler before restarting');
+        stopMaoyanScheduler();
     }
 
     if (intervalMinutes !== undefined) MAOYAN_INTERVAL = intervalMinutes * 60 * 1000;
@@ -287,7 +356,9 @@ export function startMaoyanScheduler(intervalMinutes?: number, initialDelayMinut
 
     console.log(`[MaoyanScheduler] Starting scheduler (initial delay: ${MAOYAN_INITIAL_DELAY / 1000 / 60} min, interval: ${MAOYAN_INTERVAL / 1000 / 60} min)`);
 
-    setTimeout(() => {
+    // 保存 setTimeout 的引用，以便后续可以清除
+    maoyanSchedulerTimeout = setTimeout(() => {
+        maoyanSchedulerTimeout = null;
         refreshMaoyanData();
         maoyanSchedulerInterval = setInterval(() => {
             refreshMaoyanData();
@@ -296,9 +367,20 @@ export function startMaoyanScheduler(intervalMinutes?: number, initialDelayMinut
 }
 
 export function stopMaoyanScheduler(): void {
+    let wasRunning = false;
+    // 清除 setInterval
     if (maoyanSchedulerInterval) {
         clearInterval(maoyanSchedulerInterval);
         maoyanSchedulerInterval = null;
+        wasRunning = true;
+    }
+    // 清除 setTimeout
+    if (maoyanSchedulerTimeout) {
+        clearTimeout(maoyanSchedulerTimeout);
+        maoyanSchedulerTimeout = null;
+        wasRunning = true;
+    }
+    if (wasRunning) {
         console.log('[MaoyanScheduler] Scheduler stopped');
     }
 }

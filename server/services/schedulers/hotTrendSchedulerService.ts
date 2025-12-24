@@ -139,6 +139,7 @@ export async function scrapeAllPlatforms(): Promise<void> {
 let SCRAPE_INTERVAL = 60 * 60 * 1000; // 60 minutes
 let INITIAL_DELAY = 1 * 60 * 1000; // Default: 1 minute
 let schedulerInterval: NodeJS.Timeout | null = null;
+let schedulerTimeout: NodeJS.Timeout | null = null;
 
 /**
  * Set the scheduler interval (in minutes)
@@ -182,9 +183,10 @@ export function getHotTrendSchedulerInitialDelay(): number {
  * Start the hot trend scheduler
  */
 export function startHotTrendScheduler(intervalMinutes?: number, initialDelayMinutes?: number): void {
-    if (schedulerInterval) {
-        console.log('[HotTrendScheduler] Scheduler already running');
-        return;
+    // 如果定时器已经在运行，先停止它
+    if (schedulerInterval || schedulerTimeout) {
+        console.log('[HotTrendScheduler] Stopping existing scheduler before restarting');
+        stopHotTrendScheduler();
     }
 
     if (intervalMinutes !== undefined) {
@@ -198,7 +200,8 @@ export function startHotTrendScheduler(intervalMinutes?: number, initialDelayMin
     console.log(`[HotTrendScheduler] Starting scheduler (initial delay: ${INITIAL_DELAY / 1000 / 60} minutes, interval: ${SCRAPE_INTERVAL / 1000 / 60} minutes)`);
 
     // Schedule first run after initial delay
-    setTimeout(() => {
+    schedulerTimeout = setTimeout(() => {
+        schedulerTimeout = null;
         scrapeAllPlatforms();
         
         // Then run at specified interval
@@ -212,9 +215,20 @@ export function startHotTrendScheduler(intervalMinutes?: number, initialDelayMin
  * Stop the hot trend scheduler
  */
 export function stopHotTrendScheduler(): void {
+    let wasRunning = false;
+    // 清除 setInterval
     if (schedulerInterval) {
         clearInterval(schedulerInterval);
         schedulerInterval = null;
+        wasRunning = true;
+    }
+    // 清除 setTimeout
+    if (schedulerTimeout) {
+        clearTimeout(schedulerTimeout);
+        schedulerTimeout = null;
+        wasRunning = true;
+    }
+    if (wasRunning) {
         console.log('[HotTrendScheduler] Scheduler stopped');
     }
 }
