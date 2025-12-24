@@ -227,6 +227,25 @@ export const schedulerApi = {
         fetchApi(`/scheduler/trigger/${task}`, { method: 'POST' }),
 };
 
+export const analyticsApi = {
+    track: (event: {
+        event_type: 'pageview' | 'click' | 'view';
+        page_path: string;
+        page_title?: string;
+        session_id?: string;
+        country?: string;
+        city?: string;
+        event_data?: any;
+    }) => fetchApi('/analytics/track', {
+        method: 'POST',
+        body: JSON.stringify(event),
+    }),
+    getStats: (days?: number) => {
+        const params = days ? `?days=${days}` : '';
+        return fetchApi(`/analytics/stats${params}`);
+    },
+};
+
 // Health check
 export const healthApi = {
     check: () =>

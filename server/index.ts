@@ -12,6 +12,7 @@ import hotTrendsRouter from './routes/hotTrends.js';
 import hotDramaRouter, { maoyanRouter } from './routes/hotDrama.js';
 import schedulerRouter from './routes/scheduler.js';
 import opensourceRouter from './routes/opensource.js';
+import analyticsRouter from './routes/analytics.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -50,6 +51,7 @@ app.use('/api/hot-trends', hotTrendsRouter);
 app.use('/api/hot-drama', hotDramaRouter);
 app.use('/api/scheduler', schedulerRouter);
 app.use('/api/opensource', opensourceRouter);
+app.use('/api/analytics', analyticsRouter);
 // Public items routes are now under /api/global-focus/public
 // Maoyan routes: /api/maoyan (legacy) and /api/hot-drama/maoyan (new)
 app.use('/api/maoyan', maoyanRouter);

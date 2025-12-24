@@ -156,6 +156,36 @@ function initSchema() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_opensource_trending_period ON opensource_trending(period)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_opensource_trending_language ON opensource_trending(language_filter)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_opensource_trending_fetched_at ON opensource_trending(fetched_at)`);
+
+  // Analytics events table (for tracking page views and user behavior)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS analytics_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_type TEXT NOT NULL CHECK(event_type IN ('pageview', 'click', 'view')),
+      page_path TEXT NOT NULL,
+      page_title TEXT,
+      user_id INTEGER,
+      session_id TEXT,
+      ip_address TEXT,
+      user_agent TEXT,
+      referrer TEXT,
+      device_type TEXT,
+      browser TEXT,
+      os TEXT,
+      country TEXT,
+      city TEXT,
+      event_data TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Create indexes for analytics_events
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_analytics_events_type ON analytics_events(event_type)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_analytics_events_page_path ON analytics_events(page_path)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_analytics_events_user_id ON analytics_events(user_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_analytics_events_session_id ON analytics_events(session_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_analytics_events_created_at ON analytics_events(created_at)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_analytics_events_date ON analytics_events(DATE(created_at))`);
 }
 
 // Migration function to update platform_accounts table CHECK constraint
@@ -731,6 +761,113 @@ export const opensourceTrendingOps = {
   // Count by period
   countByPeriod: db.prepare(`
     SELECT period, COUNT(*) as count FROM opensource_trending GROUP BY period
+  `),
+};
+
+// Analytics operations
+export const analyticsOps = {
+  // Insert an analytics event
+  insert: db.prepare(`
+    INSERT INTO analytics_events (event_type, page_path, page_title, user_id, session_id, ip_address, user_agent, referrer, device_type, browser, os, country, city, event_data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `),
+
+  // Get page views count by date range
+  getPageViewsByDateRange: db.prepare(`
+    SELECT DATE(created_at) as date, COUNT(*) as count
+    FROM analytics_events
+    WHERE event_type = 'pageview' AND DATE(created_at) >= DATE('now', ?) AND DATE(created_at) <= DATE('now')
+    GROUP BY DATE(created_at)
+    ORDER BY date ASC
+  `),
+
+  // Get unique visitors by date range
+  getUniqueVisitorsByDateRange: db.prepare(`
+    SELECT DATE(created_at) as date, COUNT(DISTINCT session_id) as count
+    FROM analytics_events
+    WHERE event_type = 'pageview' AND DATE(created_at) >= DATE('now', ?) AND DATE(created_at) <= DATE('now')
+    GROUP BY DATE(created_at)
+    ORDER BY date ASC
+  `),
+
+  // Get page views by page path
+  getPageViewsByPath: db.prepare(`
+    SELECT page_path, COUNT(*) as count
+    FROM analytics_events
+    WHERE event_type = 'pageview' AND DATE(created_at) >= DATE('now', ?)
+    GROUP BY page_path
+    ORDER BY count DESC
+    LIMIT ?
+  `),
+
+  // Get total page views
+  getTotalPageViews: db.prepare(`
+    SELECT COUNT(*) as count FROM analytics_events WHERE event_type = 'pageview'
+  `),
+
+  // Get total unique visitors (by session_id)
+  getTotalUniqueVisitors: db.prepare(`
+    SELECT COUNT(DISTINCT session_id) as count FROM analytics_events WHERE event_type = 'pageview'
+  `),
+
+  // Get page views today
+  getPageViewsToday: db.prepare(`
+    SELECT COUNT(*) as count FROM analytics_events 
+    WHERE event_type = 'pageview' AND DATE(created_at) = DATE('now')
+  `),
+
+  // Get unique visitors today
+  getUniqueVisitorsToday: db.prepare(`
+    SELECT COUNT(DISTINCT session_id) as count FROM analytics_events 
+    WHERE event_type = 'pageview' AND DATE(created_at) = DATE('now')
+  `),
+
+  // Get device statistics
+  getDeviceStats: db.prepare(`
+    SELECT device_type, COUNT(*) as count
+    FROM analytics_events
+    WHERE event_type = 'pageview' AND DATE(created_at) >= DATE('now', ?)
+    GROUP BY device_type
+    ORDER BY count DESC
+  `),
+
+  // Get browser statistics
+  getBrowserStats: db.prepare(`
+    SELECT browser, COUNT(*) as count
+    FROM analytics_events
+    WHERE event_type = 'pageview' AND DATE(created_at) >= DATE('now', ?)
+    GROUP BY browser
+    ORDER BY count DESC
+    LIMIT ?
+  `),
+
+  // Get OS statistics
+  getOSStats: db.prepare(`
+    SELECT os, COUNT(*) as count
+    FROM analytics_events
+    WHERE event_type = 'pageview' AND DATE(created_at) >= DATE('now', ?)
+    GROUP BY os
+    ORDER BY count DESC
+    LIMIT ?
+  `),
+
+  // Get referrer statistics
+  getReferrerStats: db.prepare(`
+    SELECT CASE 
+      WHEN referrer IS NULL OR referrer = '' THEN 'direct'
+      WHEN referrer LIKE '%' || page_path || '%' THEN 'internal'
+      ELSE referrer
+    END as referrer_type, COUNT(*) as count
+    FROM analytics_events
+    WHERE event_type = 'pageview' AND DATE(created_at) >= DATE('now', ?)
+    GROUP BY referrer_type
+    ORDER BY count DESC
+    LIMIT ?
+  `),
+
+  // Delete old events (older than specified days)
+  deleteOld: db.prepare(`
+    DELETE FROM analytics_events WHERE created_at < datetime('now', ?)
   `),
 };
 

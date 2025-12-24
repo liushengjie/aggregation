@@ -19,7 +19,8 @@ import {
   Play,
   Loader2,
   CheckCircle2,
-  XCircle
+  XCircle,
+  BarChart3
 } from 'lucide-react';
 
 interface SchedulerConfig {
@@ -40,7 +41,11 @@ interface SchedulerStatus {
   opensource: { running: boolean };
 }
 
-const SettingsView: React.FC = () => {
+interface SettingsViewProps {
+  onNavigateToView?: (view: string) => void;
+}
+
+const SettingsView: React.FC<SettingsViewProps> = ({ onNavigateToView }) => {
   const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('accounts');
   const [schedulerConfig, setSchedulerConfig] = useState<SchedulerConfig | null>(null);
@@ -48,6 +53,9 @@ const SettingsView: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [triggering, setTriggering] = useState<string | null>(null);
   const [localConfig, setLocalConfig] = useState<SchedulerConfig | null>(null);
+  
+  // Check if user is admin (for now, check via username match with env var or default 'admin')
+  const isAdmin = user?.username === (process.env.REACT_APP_ADMIN_USERNAME || 'admin');
 
   const tabs = [
     { id: 'accounts', name: '平台账号', icon: <Globe size={16} /> },
@@ -55,7 +63,15 @@ const SettingsView: React.FC = () => {
     { id: 'security', name: '安全设置', icon: <Shield size={16} /> },
     { id: 'notifications', name: '通知提醒', icon: <Bell size={16} /> },
     { id: 'schedulers', name: '定时任务', icon: <Clock size={16} /> },
+    ...(isAdmin ? [{ id: 'admin', name: '数据统计', icon: <BarChart3 size={16} /> }] : []),
   ];
+
+  // Handle admin tab navigation
+  useEffect(() => {
+    if (activeTab === 'admin' && onNavigateToView) {
+      onNavigateToView('admin');
+    }
+  }, [activeTab, onNavigateToView]);
 
   // Load scheduler status and config
   useEffect(() => {
@@ -540,6 +556,15 @@ const SettingsView: React.FC = () => {
                 </div>
               </>
             )}
+          </div>
+        );
+      case 'admin':
+        // Admin dashboard is handled via useEffect navigation
+        // Return a loading state or empty state while navigation happens
+        return (
+          <div className="flex flex-col items-center justify-center py-16 text-center space-y-3">
+            <Loader2 className="animate-spin text-indigo-600" size={32} />
+            <p className="text-sm text-slate-500">正在跳转到数据统计页面...</p>
           </div>
         );
       case 'profile':

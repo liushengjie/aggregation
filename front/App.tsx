@@ -9,6 +9,8 @@ import GlobalFocusView from './views/GlobalFocusView';
 import GameView from './views/GameView';
 import OpenSourceView from './views/OpenSourceView';
 import MusicView from './views/MusicView';
+import AdminDashboardView from './views/AdminDashboardView';
+import { AnalyticsTracker } from './components/AnalyticsTracker';
 import { Platform } from './types';
 import { Loader2 } from 'lucide-react';
 
@@ -64,7 +66,7 @@ const App: React.FC = () => {
             </div>
           );
         }
-        return <SettingsView />;
+        return <SettingsView onNavigateToView={setActiveView} />;
       case 'insights':
         return <HotDramaView />;
       case 'hot-trends':
@@ -75,6 +77,19 @@ const App: React.FC = () => {
         return <OpenSourceView />;
       case 'music':
         return <MusicView />;
+      case 'admin':
+        // Admin dashboard requires login and admin role
+        if (!user) {
+          return (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center">
+                <h2 className="text-xl font-bold text-slate-800 mb-2">需要登录</h2>
+                <p className="text-slate-500">请先登录以访问管理后台</p>
+              </div>
+            </div>
+          );
+        }
+        return <AdminDashboardView />;
       case 'dashboard':
       default:
         return (
@@ -95,6 +110,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex font-['Plus_Jakarta_Sans']">
+      <AnalyticsTracker activeView={activeView} />
       <Sidebar
         activeView={activeView}
         setActiveView={(view) => {
