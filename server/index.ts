@@ -1,8 +1,18 @@
+// 加载环境变量（必须在其他导入之前）
+import dotenv from 'dotenv';
+import { resolve } from 'path';
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+// 加载 .env 文件
+dotenv.config({ path: resolve(process.cwd(), '.env') });
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 import express from 'express';
 import cors from 'cors';
 import session from 'express-session';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { initDatabase } from './services/database.js';
 import authRouter from './routes/auth.js';
 import accountsRouter from './routes/accounts.js';
@@ -13,9 +23,7 @@ import hotDramaRouter, { maoyanRouter } from './routes/hotDrama.js';
 import schedulerRouter, { initializeSchedulers } from './routes/scheduler.js';
 import opensourceRouter from './routes/opensource.js';
 import analyticsRouter from './routes/analytics.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import searchRouter from './routes/search.js';
 
 const app = express();
 
@@ -106,6 +114,7 @@ app.use('/api/hot-drama', hotDramaRouter);
 app.use('/api/scheduler', schedulerRouter);
 app.use('/api/opensource', opensourceRouter);
 app.use('/api/analytics', analyticsRouter);
+app.use('/api/search', searchRouter);
 // Public items routes are now under /api/global-focus/public
 // Maoyan routes: /api/maoyan (legacy) and /api/hot-drama/maoyan (new)
 app.use('/api/maoyan', maoyanRouter);
@@ -128,7 +137,16 @@ app.use((req, res) => {
         return res.status(404).json({ error: 'Not found' });
     }
     // Serve index.html for SPA client-side routing
-    res.sendFile(path.join(distPath, 'index.html'));
+    const indexPath = path.join(distPath, 'index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        // 开发环境可能没有构建前端，返回提示信息
+        res.status(404).json({ 
+            error: 'Frontend not built', 
+            message: 'Please run "npm run build" to build the frontend, or access the frontend dev server at http://localhost:3350' 
+        });
+    }
 });
 
 // Error handling
