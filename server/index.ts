@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import { resolve } from 'path';
 import { fileURLToPath } from 'url';
 import path from 'path';
+import fs from 'fs';
 
 // 加载 .env 文件
 dotenv.config({ path: resolve(process.cwd(), '.env') });
