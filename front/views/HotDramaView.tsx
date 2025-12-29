@@ -1,73 +1,22 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Film, Loader2, Star, TrendingUp, MessageSquare, Heart, Share2, Award, Zap, Menu, Trophy, Sparkles, Calendar, Ticket, PieChart, Monitor, Users, Play, ChevronRight, ChevronLeft, X, ExternalLink, Tv } from 'lucide-react';
-import { maoyanApi, getApiBase, searchApi } from '../api/api';
+import { Film, Loader2, Star, TrendingUp, MessageSquare, Heart, Share2, Award, Zap, Menu, Trophy, Sparkles, Calendar, Ticket, PieChart, Monitor, Users, User, Play, ChevronRight, ChevronLeft, X, ExternalLink, Tv } from 'lucide-react';
+import { maoyanApi, getApiBase } from '../api/api';
 import Masonry from 'react-masonry-css';
-
-// 电影列表项接口
-interface MaoyanMovieItem {
-  movieId: string;
-  title: string;
-  releaseInfo?: string;
-  boxOffice?: number;
-  boxOfficeUnit?: string;
-  sumBoxDesc?: string;
-  sumSplitBoxDesc?: string;
-  boxRate?: string;
-  boxSplitRate?: string;
-  showCount?: number;
-  showCountRate?: string;
-  avgSeatView?: string;
-  avgShowView?: string;
-  fetchedAt: string;
-}
-
-// 电影详情接口
-interface MaoyanMovieDetail {
-  movieId: string;
-  name: string;
-  category?: string;
-  imgUrl?: string;
-  releaseInfo?: string;
-  boxTrends: Array<{
-    box: number;
-    boxDesc: string;
-    date: number;
-    releaseDay: boolean;
-  }>;
-  fetchedAt: string;
-}
-
-// 网播热剧列表项接口
-interface MaoyanWebSeriesItem {
-  seriesId: string;
-  title: string;
-  currHeat: number;
-  currHeatDesc: string;
-  platformDesc: string;
-  releaseInfo: string;
-  category?: string;
-  imgUrl?: string;
-  fetchedAt: string;
-}
-
-// 网播热剧详情接口
-interface MaoyanWebSeriesDetail {
-  seriesId: string;
-  name: string;
-  category?: string;
-  imgUrl?: string;
-  platformDesc?: string;
-  releaseInfo?: string;
-  heatTrends: Array<{
-    date: number;
-    heat: number;
-  }>;
-  historyMaxHeat?: number;
-  historyMaxHeatDate?: string;
-  commentCount?: string;
-  sumCommentCount?: string;
-  fetchedAt: string;
-}
+import {
+  RankingList,
+  DetailHeader,
+  BilibiliVideoList,
+  SocialCommentsSection,
+  MetricCard,
+  TrendDataPoint,
+  MaoyanMovieItem,
+  MaoyanMovieDetail,
+  MaoyanWebSeriesItem,
+  MaoyanWebSeriesDetail,
+  BaseRankingItem,
+} from '../components/hotDrama';
+import type { Metric } from '../components/hotDrama/MetricCard';
+import { getImageProxyUrl } from '../components/utils/imageProxyUtils';
 
 const HotDramaView: React.FC = () => {
   const [movies, setMovies] = useState<MaoyanMovieItem[]>([]);
@@ -85,7 +34,7 @@ const HotDramaView: React.FC = () => {
   const [weiboLoading, setWeiboLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [mainTab, setMainTab] = useState<'ranking' | 'resources' | 'webSeries'>('ranking'); // 主tab：影视排行榜/热门资源/网播热剧
+  const [mainTab, setMainTab] = useState<'ranking' | 'resources' | 'webSeries' | 'variety'>('ranking'); // 主tab：影视排行榜/热门资源/网播热剧/综艺节目
   
   // 网播热剧相关状态
   const [webSeriesList, setWebSeriesList] = useState<MaoyanWebSeriesItem[]>([]);
@@ -101,6 +50,23 @@ const HotDramaView: React.FC = () => {
   const [webSeriesWeiboLoading, setWebSeriesWeiboLoading] = useState(false);
   const [webSeriesLoading, setWebSeriesLoading] = useState(true);
   const [webSeriesDetailLoading, setWebSeriesDetailLoading] = useState(false);
+  
+  // 综艺节目相关状态
+  const [varietyList, setVarietyList] = useState<MaoyanWebSeriesItem[]>([]);
+  const [selectedVariety, setSelectedVariety] = useState<MaoyanWebSeriesItem | null>(null);
+  const [varietyDetail, setVarietyDetail] = useState<MaoyanWebSeriesDetail | null>(null);
+  const [varietyBilibiliComments, setVarietyBilibiliComments] = useState<any[]>([]);
+  const [varietyBilibiliLoading, setVarietyBilibiliLoading] = useState(false);
+  const [varietyBilibiliScrollIndex, setVarietyBilibiliScrollIndex] = useState(0);
+  const [varietyCanScrollRight, setVarietyCanScrollRight] = useState(false);
+  const [varietyXiaohongshuComments, setVarietyXiaohongshuComments] = useState<any[]>([]);
+  const [varietyXiaohongshuLoading, setVarietyXiaohongshuLoading] = useState(false);
+  const [varietyWeiboComments, setVarietyWeiboComments] = useState<any[]>([]);
+  const [varietyWeiboLoading, setVarietyWeiboLoading] = useState(false);
+  const [varietyLoading, setVarietyLoading] = useState(true);
+  const [varietyDetailLoading, setVarietyDetailLoading] = useState(false);
+  const varietyBilibiliScrollRef = useRef<HTMLDivElement>(null);
+  
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const movieItemRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
   const bilibiliScrollRef = useRef<HTMLDivElement>(null);
@@ -323,14 +289,125 @@ const HotDramaView: React.FC = () => {
     }
   }, []);
 
+  // 加载综艺节目列表
+  const loadVarietyList = useCallback(async () => {
+    try {
+      setVarietyLoading(true);
+      const response = await maoyanApi.getVarietyList();
+      if (response.success && response.data) {
+        const varietyList = response.data.items || [];
+        setVarietyList(varietyList);
+        // 默认选中第一部综艺（仅在列表为空时）
+        if (varietyList.length > 0) {
+          setSelectedVariety(prev => prev || varietyList[0]);
+        }
+      } else {
+        setVarietyList([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch variety list:', error);
+      setVarietyList([]);
+    } finally {
+      setVarietyLoading(false);
+    }
+  }, []);
+
+  // 加载综艺节目详情
+  const loadVarietyDetail = useCallback(async (seriesId: string) => {
+    try {
+      setVarietyDetailLoading(true);
+      setVarietyDetail(null);
+      const response = await maoyanApi.getVarietyDetail(seriesId);
+      if (response.success && response.data) {
+        setVarietyDetail(response.data);
+      } else {
+        setVarietyDetail(null);
+      }
+    } catch (error) {
+      console.error('Failed to fetch variety detail:', error);
+      setVarietyDetail(null);
+    } finally {
+      setVarietyDetailLoading(false);
+    }
+  }, []);
+
+  // 加载综艺节目B站解说
+  const loadVarietyBilibiliComments = useCallback(async (seriesId: string) => {
+    try {
+      setVarietyBilibiliLoading(true);
+      setVarietyBilibiliComments([]);
+      setVarietyCanScrollRight(false);
+      const response = await maoyanApi.getVarietyBilibiliComments(seriesId, 20);
+      if (response.success && response.data) {
+        setVarietyBilibiliComments(response.data.items || []);
+        setTimeout(() => {
+          if (varietyBilibiliScrollRef.current) {
+            const container = varietyBilibiliScrollRef.current;
+            const maxScroll = container.scrollWidth - container.clientWidth;
+            setVarietyCanScrollRight(maxScroll > 10);
+          }
+        }, 100);
+      } else {
+        setVarietyBilibiliComments([]);
+        setVarietyCanScrollRight(false);
+      }
+    } catch (error) {
+      console.error('Failed to fetch variety Bilibili comments:', error);
+      setVarietyBilibiliComments([]);
+      setVarietyCanScrollRight(false);
+    } finally {
+      setVarietyBilibiliLoading(false);
+    }
+  }, []);
+
+  // 加载综艺节目小红书讨论
+  const loadVarietyXiaohongshuComments = useCallback(async (seriesId: string) => {
+    try {
+      setVarietyXiaohongshuLoading(true);
+      setVarietyXiaohongshuComments([]);
+      const response = await maoyanApi.getVarietyXiaohongshuComments(seriesId, 100);
+      if (response.success && response.data) {
+        setVarietyXiaohongshuComments(response.data.items || []);
+      } else {
+        setVarietyXiaohongshuComments([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch variety Xiaohongshu comments:', error);
+      setVarietyXiaohongshuComments([]);
+    } finally {
+      setVarietyXiaohongshuLoading(false);
+    }
+  }, []);
+
+  // 加载综艺节目微博热评
+  const loadVarietyWeiboComments = useCallback(async (seriesId: string) => {
+    try {
+      setVarietyWeiboLoading(true);
+      setVarietyWeiboComments([]);
+      const response = await maoyanApi.getVarietyWeiboComments(seriesId, 10);
+      if (response.success && response.data && response.data.items) {
+        setVarietyWeiboComments(response.data.items);
+      } else {
+        setVarietyWeiboComments([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch variety Weibo comments:', error);
+      setVarietyWeiboComments([]);
+    } finally {
+      setVarietyWeiboLoading(false);
+    }
+  }, []);
+
   // 初始加载
   useEffect(() => {
     if (mainTab === 'ranking') {
-      loadMovieList();
+    loadMovieList();
     } else if (mainTab === 'webSeries') {
       loadWebSeriesList();
+    } else if (mainTab === 'variety') {
+      loadVarietyList();
     }
-  }, [mainTab, loadMovieList, loadWebSeriesList]);
+  }, [mainTab, loadMovieList, loadWebSeriesList, loadVarietyList]);
 
   // 当选中电影改变时，加载详情和B站解说、小红书讨论、微博热评
   useEffect(() => {
@@ -390,6 +467,61 @@ const HotDramaView: React.FC = () => {
     }
   }, [selectedWebSeries, loadWebSeriesDetail, loadWebSeriesBilibiliComments, loadWebSeriesXiaohongshuComments, loadWebSeriesWeiboComments]);
 
+  // 当选中综艺节目改变时，加载详情和B站解说、小红书讨论、微博热评
+  useEffect(() => {
+    if (selectedVariety) {
+      loadVarietyDetail(selectedVariety.seriesId);
+      loadVarietyBilibiliComments(selectedVariety.seriesId);
+      loadVarietyXiaohongshuComments(selectedVariety.seriesId);
+      loadVarietyWeiboComments(selectedVariety.seriesId);
+      setVarietyBilibiliScrollIndex(0);
+      setVarietyCanScrollRight(false);
+      
+      // 滚动到顶部
+      if (detailScrollRef.current) {
+        detailScrollRef.current.scrollTop = 0;
+      }
+      setTimeout(() => {
+        if (detailScrollRef.current) {
+          detailScrollRef.current.scrollTop = 0;
+        }
+      }, 300);
+    } else {
+      setVarietyBilibiliComments([]);
+      setVarietyXiaohongshuComments([]);
+      setVarietyWeiboComments([]);
+      setVarietyBilibiliScrollIndex(0);
+      setVarietyCanScrollRight(false);
+    }
+  }, [selectedVariety, loadVarietyDetail, loadVarietyBilibiliComments, loadVarietyXiaohongshuComments, loadVarietyWeiboComments]);
+
+  // 检查综艺B站是否可以向右滚动
+  useEffect(() => {
+    const checkScrollability = () => {
+      if (varietyBilibiliScrollRef.current) {
+        const container = varietyBilibiliScrollRef.current;
+        const maxScroll = container.scrollWidth - container.clientWidth;
+        const currentScroll = container.scrollLeft;
+        setVarietyCanScrollRight(currentScroll < maxScroll - 10);
+      } else {
+        setVarietyCanScrollRight(false);
+      }
+    };
+
+    checkScrollability();
+
+    const container = varietyBilibiliScrollRef.current;
+    if (container) {
+      container.addEventListener('scroll', checkScrollability);
+      window.addEventListener('resize', checkScrollability);
+      
+      return () => {
+        container.removeEventListener('scroll', checkScrollability);
+        window.removeEventListener('resize', checkScrollability);
+      };
+    }
+  }, [varietyBilibiliComments]);
+
   // 检查网播热剧B站是否可以向右滚动
   useEffect(() => {
     const checkScrollability = () => {
@@ -419,14 +551,14 @@ const HotDramaView: React.FC = () => {
 
   // 当详情加载完成后，也滚动到顶部
   useEffect(() => {
-    if ((movieDetail || webSeriesDetail) && detailScrollRef.current) {
+    if ((movieDetail || webSeriesDetail || varietyDetail) && detailScrollRef.current) {
       setTimeout(() => {
         if (detailScrollRef.current) {
           detailScrollRef.current.scrollTop = 0;
         }
       }, 100);
     }
-  }, [movieDetail, webSeriesDetail]);
+  }, [movieDetail, webSeriesDetail, varietyDetail]);
 
   // 检查是否可以向右滚动
   useEffect(() => {
@@ -471,23 +603,6 @@ const HotDramaView: React.FC = () => {
     setSelectedMovie(movie);
   };
 
-  // 图片代理URL处理函数
-  const getImageProxyUrl = useCallback((url: string) => {
-    if (!url) return '';
-    let fullUrl = url;
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      fullUrl = 'https://' + url;
-    }
-    // 小红书图片代理
-    if (fullUrl.includes('xhscdn.com') || fullUrl.includes('xhslink.com') || fullUrl.includes('sns-webpic-qc.xhscdn.com')) {
-      return `${getApiBase()}/image/proxy?url=${encodeURIComponent(fullUrl)}`;
-    }
-    // B站图片代理
-    if (fullUrl.includes('hdslb.com') || fullUrl.includes('biliimg.com') || fullUrl.includes('bilicdn.com') || fullUrl.includes('b23.tv')) {
-      return `${getApiBase()}/image/proxy?url=${encodeURIComponent(fullUrl)}`;
-    }
-    return fullUrl;
-  }, []);
 
   // 获取今日票房（从详情数据的最后一项）
   const getTodayBoxOffice = (): number | null => {
@@ -498,6 +613,85 @@ const HotDramaView: React.FC = () => {
     }
     // 如果没有详情数据，使用列表数据
     return selectedMovie?.boxOffice || null;
+  };
+
+  // 准备电影指标数据
+  const getMovieMetrics = (): Metric[] => {
+    return [
+      {
+        label: '今日票房',
+        value: `${getTodayBoxOffice()?.toFixed(1) || '0.0'}万`,
+        icon: <Ticket size={9} className="text-rose-500" />,
+        color: 'text-rose-600',
+      },
+      {
+        label: '票房占比',
+        value: selectedMovie?.boxRate || '0%',
+        icon: <PieChart size={9} className="text-violet-500" />,
+        color: 'text-slate-700',
+      },
+      {
+        label: '排片占比',
+        value: selectedMovie?.showCountRate || '0%',
+        icon: <Monitor size={9} className="text-sky-500" />,
+        color: 'text-slate-700',
+      },
+      {
+        label: '上座率',
+        value: selectedMovie?.avgSeatView || '0%',
+        icon: <Users size={9} className="text-amber-500" />,
+        color: 'text-slate-700',
+      },
+    ];
+  };
+
+  // 准备电影趋势数据
+  const getMovieTrends = (): TrendDataPoint[] | undefined => {
+    if (!movieDetail?.boxTrends || movieDetail.boxTrends.length < 2) return undefined;
+    return movieDetail.boxTrends.slice(-7).map(t => ({
+      date: t.date,
+      value: t.box,
+      label: t.boxDesc,
+    }));
+  };
+
+  // 准备网剧/综艺指标数据
+  const getWebSeriesMetrics = (detail: MaoyanWebSeriesDetail, selected: MaoyanWebSeriesItem | null): Metric[] => {
+    return [
+      {
+        label: '当前热度',
+        value: selected?.currHeatDesc || '0',
+        icon: <TrendingUp size={9} className="text-rose-500" />,
+        color: 'text-rose-600',
+      },
+      ...(detail.historyMaxHeat ? [{
+        label: '历史最高',
+        value: detail.historyMaxHeat.toFixed(2),
+        icon: <Award size={9} className="text-emerald-500" />,
+        color: 'text-emerald-600',
+      }] : []),
+      ...(detail.commentCount ? [{
+        label: '评论数',
+        value: detail.commentCount,
+        icon: <MessageSquare size={9} className="text-blue-500" />,
+        color: 'text-slate-700',
+      }] : []),
+      ...(detail.sumCommentCount ? [{
+        label: '累计评论',
+        value: detail.sumCommentCount,
+        icon: <Users size={9} className="text-amber-500" />,
+        color: 'text-slate-700',
+      }] : []),
+    ] as Metric[];
+  };
+
+  // 准备网剧/综艺趋势数据
+  const getWebSeriesTrends = (detail: MaoyanWebSeriesDetail | null): TrendDataPoint[] | undefined => {
+    if (!detail?.heatTrends || detail.heatTrends.length < 2) return undefined;
+    return detail.heatTrends.slice(-7).map(t => ({
+      date: t.date,
+      value: t.heat,
+    }));
   };
 
   return (
@@ -556,6 +750,26 @@ const HotDramaView: React.FC = () => {
           >
             <Trophy size={14} />
             <span>电影排行榜</span>
+          </button>
+          <button
+            onClick={() => setMainTab('webSeries')}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-xs font-black transition-all whitespace-nowrap shrink-0 ${mainTab === 'webSeries'
+              ? 'bg-rose-600 text-white shadow-md'
+              : 'bg-white/40 text-slate-600 hover:bg-white/60 hover:text-slate-800'
+              }`}
+          >
+            <Tv size={14} />
+            <span>网播热剧</span>
+          </button>
+          <button
+            onClick={() => setMainTab('variety')}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-xs font-black transition-all whitespace-nowrap shrink-0 ${mainTab === 'variety'
+              ? 'bg-rose-600 text-white shadow-md'
+              : 'bg-white/40 text-slate-600 hover:bg-white/60 hover:text-slate-800'
+              }`}
+          >
+            <Sparkles size={14} />
+            <span>综艺节目</span>
                 </button>
                 <button
             onClick={() => setMainTab('resources')}
@@ -567,16 +781,6 @@ const HotDramaView: React.FC = () => {
             <Sparkles size={14} />
             <span>热门资源</span>
                 </button>
-                <button
-            onClick={() => setMainTab('webSeries')}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-xs font-black transition-all whitespace-nowrap shrink-0 ${mainTab === 'webSeries'
-              ? 'bg-rose-600 text-white shadow-md'
-              : 'bg-white/40 text-slate-600 hover:bg-white/60 hover:text-slate-800'
-              }`}
-          >
-            <Tv size={14} />
-            <span>网播热剧</span>
-                </button>
               </div>
             </div>
 
@@ -586,111 +790,18 @@ const HotDramaView: React.FC = () => {
         {mainTab === 'ranking' && (
           <div className="flex-1 flex gap-4 overflow-hidden">
             {/* 左侧：电影排行列表 (1/4) */}
-            <div className="w-1/4 flex flex-col bg-white/40 backdrop-blur-md rounded-md border border-white/60 overflow-hidden">
-              <div className="px-3 py-2 border-b border-white/60 bg-gradient-to-r from-rose-50/80 to-pink-50/80">
-                <h3 className="text-xs font-black text-slate-800">电影排行</h3>
-              </div>
-
-              <div ref={scrollContainerRef} className="flex-1 overflow-y-auto custom-scrollbar">
-                {loading ? (
-                  <div className="flex flex-col items-center justify-center py-24">
-              <Loader2 className="animate-spin text-rose-600" size={24} />
-                    <p className="text-slate-400 font-bold text-xs mt-3">加载中...</p>
-                  </div>
-                ) : movies.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-24">
-                    <Film size={32} className="text-slate-400" />
-                    <p className="text-slate-500 font-medium text-sm mt-3">暂无数据</p>
-            </div>
-          ) : (
-                  <div className="divide-y divide-white/40">
-                    {movies.map((movie, index) => (
-                      <div
-                        key={movie.movieId}
-                        ref={(el) => {
-                          movieItemRefs.current[movie.movieId] = el;
-                        }}
-                        onClick={() => handleMovieSelect(movie)}
-                        className={`px-3 py-2 cursor-pointer transition-all hover:bg-white/60 ${selectedMovie?.movieId === movie.movieId
-                          ? 'bg-rose-50/80 border-l-4 border-rose-600'
-                          : ''
-                          }`}
-                      >
-                        {/* 第一行：排名 + 标题 */}
-                        <div className="flex items-center justify-between gap-2 mb-1">
-                          <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                            <span className={`text-[10px] font-black flex-shrink-0 w-5 ${index === 0 ? 'text-red-500' :
-                              index === 1 ? 'text-orange-500' :
-                                index === 2 ? 'text-amber-500' :
-                                  'text-slate-400'
-                              }`}>
-                              {String(index + 1).padStart(2, '0')}
-                            </span>
-                            <h4 className="text-sm font-black text-slate-800 truncate flex-1">
-                              {movie.title}
-                            </h4>
-                            {selectedMovie?.movieId === movie.movieId && (
-                              <Star size={12} className="text-rose-600 fill-rose-600 flex-shrink-0" />
-                            )}
-                          </div>
-                        </div>
-
-                        {/* 第二行：上映信息 + 今日票房 + 总票房 */}
-                        <div className="flex items-center gap-2 mb-1">
-                          {movie.releaseInfo && (
-                            <div className="flex items-center gap-1 overflow-hidden">
-                              <Calendar size={10} className="text-blue-500 flex-shrink-0" />
-                              <span className="text-[10px] text-slate-500 truncate">{movie.releaseInfo}</span>
-                            </div>
-                          )}
-                          {movie.boxOffice !== null && movie.boxOffice !== undefined && (
-                            <div className="flex items-center gap-1 whitespace-nowrap">
-                              <Ticket size={10} className="text-rose-500 flex-shrink-0" />
-                              <span className="text-[10px] text-slate-400 font-normal">今日</span>
-                              <span className="text-[10px] text-rose-600 font-black">{movie.boxOffice.toFixed(1)}万</span>
-                          </div>
-                        )}
-                          {movie.sumBoxDesc && (
-                            <div className="flex items-center gap-1 whitespace-nowrap ml-auto">
-                              <TrendingUp size={10} className="text-emerald-500 flex-shrink-0" />
-                              <span className="text-[10px] text-slate-600 font-medium">{movie.sumBoxDesc}</span>
-                          </div>
-                        )}
-                      </div>
-
-                        {/* 第三行：分账票房 + 数据指标 */}
-                        <div className="flex items-center gap-2 text-[10px] text-slate-400">
-                          {movie.sumSplitBoxDesc && (
-                            <div className="flex items-center gap-1 whitespace-nowrap">
-                              <TrendingUp size={10} className="text-amber-500 flex-shrink-0" />
-                              <span className="text-amber-600 font-medium">{movie.sumSplitBoxDesc}</span>
-                            </div>
-                          )}
-                          {movie.boxRate && (
-                            <div className="flex items-center gap-1">
-                              <PieChart size={10} className="text-violet-500" />
-                              <span className="font-medium">占比 {movie.boxRate}</span>
-                            </div>
-                          )}
-                          {movie.showCountRate && (
-                            <div className="flex items-center gap-1">
-                              <Monitor size={10} className="text-sky-500" />
-                              <span>排片 {movie.showCountRate}</span>
-                            </div>
-                          )}
-                          {movie.avgSeatView && (
-                            <div className="flex items-center gap-1 ml-auto">
-                              <Users size={10} className="text-amber-500" />
-                              <span>上座 {movie.avgSeatView}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                            </div>
-                          )}
-                        </div>
-            </div>
+            <RankingList
+              ref={scrollContainerRef}
+              items={movies.map(m => ({ ...m, id: m.movieId }))}
+              loading={loading}
+              selectedId={selectedMovie?.movieId || null}
+              onSelect={(item) => {
+                const movie = movies.find(m => m.movieId === item.id);
+                if (movie) handleMovieSelect(movie);
+              }}
+              type="movie"
+              title="电影排行"
+            />
 
             {/* 右侧：电影详情 (3/4) */}
 
@@ -706,777 +817,152 @@ const HotDramaView: React.FC = () => {
                 </div>
               ) : movieDetail ? (
                 <div ref={detailScrollRef} className="flex-1 flex flex-col overflow-y-auto custom-scrollbar relative z-10">
-                  {/* 电影头部信息 - 新布局 */}
-                  <div className="px-4 py-3 border-b border-white/60 bg-gradient-to-br from-white/80 to-white/40">
-                    <div className="flex items-stretch gap-4">
-                      {/* 最左侧：影视海报 */}
-                      <div className="relative group flex-shrink-0 flex flex-col">
-                        {movieDetail.imgUrl ? (
-                          <div className="w-64 bg-slate-200 rounded-lg overflow-hidden border-2 border-white shadow-xl" style={{ aspectRatio: '2/3' }}>
-                            <img
-                              src={movieDetail.imgUrl}
-                              alt={movieDetail.name}
-                              className="w-full h-full object-cover rounded-lg transition-transform duration-500 group-hover:scale-[1.02]"
-                            />
-                          </div>
-                        ) : (
-                          <div className="w-64 h-full bg-slate-200 rounded-lg flex items-center justify-center text-slate-400 border-2 border-white shadow-xl" style={{ aspectRatio: '2/3' }}>
-                            <Film size={32} />
-                          </div>
-                        )}
-                        <div className="absolute -bottom-3 -right-3 w-12 h-12 bg-amber-500 rounded-full flex items-center justify-center text-white shadow-lg border-4 border-white transform rotate-12 group-hover:rotate-0 transition-transform z-10">
-                          <Award size={24} />
+                  {/* 电影头部信息 */}
+                  <DetailHeader
+                    name={movieDetail.name}
+                    imgUrl={movieDetail.imgUrl}
+                    releaseInfo={movieDetail.releaseInfo}
+                    category={movieDetail.category}
+                    type="movie"
+                    metrics={getMovieMetrics()}
+                    trends={getMovieTrends()}
+                    trendLabel="近日趋势"
+                    trendGradientId="movieTrendGradient"
+                    rightBottomContent={
+                      <BilibiliVideoList
+                        videos={bilibiliComments}
+                        loading={bilibiliLoading}
+                        title="B站影视解说"
+                      />
+                    }
+                  />
+
+                  {/* 社交热评 */}
+                  <SocialCommentsSection
+                    weiboComments={weiboComments}
+                    weiboLoading={weiboLoading}
+                    xiaohongshuComments={xiaohongshuComments}
+                    xiaohongshuLoading={xiaohongshuLoading}
+                    onXiaohongshuClick={(item) => {
+                      setSelectedXiaohongshuItem(item);
+                      setShowXiaohongshuModal(true);
+                    }}
+                  />
+                  
+                  {/* 小红书弹窗 */}
+                  {showXiaohongshuModal && selectedXiaohongshuItem && (
+                    <div 
+                      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                      onClick={() => setShowXiaohongshuModal(false)}
+                    >
+                      <div 
+                        className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {/* 关闭按钮 */}
+                        <div className="flex items-center justify-between p-4 border-b border-slate-200">
+                          <h3 className="text-lg font-bold text-slate-800">小红书详情</h3>
+                          <button
+                            onClick={() => setShowXiaohongshuModal(false)}
+                            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                          >
+                            <X size={20} className="text-slate-600" />
+                          </button>
                         </div>
-                      </div>
-
-                      {/* 右侧：标题、指标和趋势 */}
-                      <div className="flex-1 flex flex-col min-w-0 justify-between">
-                        <div className="flex flex-col">
-                          {/* 标题和基础信息 */}
-                          <div className="mb-2">
-                            <div className="flex items-center justify-between mb-1.5">
-                              <div className="flex items-center gap-2">
-                                <h2 className="text-xl font-black text-slate-800 tracking-tight truncate">{movieDetail.name}</h2>
-                                <div className="px-1.5 py-0.5 bg-rose-100 text-rose-600 text-[9px] font-black rounded uppercase tracking-wider flex-shrink-0">Hot</div>
-                              </div>
-                              <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium bg-white/50 px-1.5 py-0.5 rounded-md border border-white/60">
-                                <Zap size={10} className="text-amber-500" />
-                                <span>{movieDetail.releaseInfo}</span>
-                              </div>
+                        
+                        {/* 内容区域 */}
+                        <div className="flex-1 overflow-y-auto p-6">
+                          {/* 图片 */}
+                          {selectedXiaohongshuItem.cover && (
+                            <div className="mb-4 rounded-lg overflow-hidden">
+                              <img
+                                src={getImageProxyUrl(selectedXiaohongshuItem.cover)}
+                                alt={selectedXiaohongshuItem.title}
+                                className="w-full h-auto object-contain max-h-[400px] mx-auto"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  target.style.display = 'none';
+                                }}
+                              />
                             </div>
-
-                            <div className="flex flex-wrap gap-1.5">
-                              {movieDetail.category?.split(',').map((cat, i) => (
-                                <span key={i} className={`px-1.5 py-0.5 text-[9px] font-bold rounded border ${i % 3 === 0 ? 'bg-blue-50 text-blue-600 border-blue-200' :
-                                  i % 3 === 1 ? 'bg-purple-50 text-purple-600 border-purple-200' :
-                                    'bg-emerald-50 text-emerald-600 border-emerald-200'
-                                  }`}>
-                                  {cat.trim()}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* 右侧上方：左右布局 - 指标和趋势 */}
-                          <div className="flex gap-2 mb-1.5">
-                          {/* 左边：4个指标 */}
-                          <div className="flex-1 bg-white/50 rounded-lg p-2 border border-white/60 shadow-sm">
-                            <div className="grid grid-cols-2 gap-2">
-                              <div className="flex flex-col">
-                                <div className="flex items-center gap-0.5 mb-0.5">
-                                  <Ticket size={9} className="text-rose-500" />
-                                  <div className="text-[8px] text-slate-400 font-bold uppercase">今日票房</div>
-                                </div>
-                                <div className="text-xs font-black text-rose-600">
-                                  {getTodayBoxOffice()?.toFixed(1) || '0.0'}<span className="text-[9px] ml-0.5">万</span>
-                                </div>
-                              </div>
-                              <div className="flex flex-col">
-                                <div className="flex items-center gap-0.5 mb-0.5">
-                                  <PieChart size={9} className="text-violet-500" />
-                                  <div className="text-[8px] text-slate-400 font-bold uppercase">票房占比</div>
-                                </div>
-                                <div className="text-xs font-black text-slate-700">
-                                  {selectedMovie?.boxRate || '0%'}
-                                </div>
-                              </div>
-                              <div className="flex flex-col">
-                                <div className="flex items-center gap-0.5 mb-0.5">
-                                  <Monitor size={9} className="text-sky-500" />
-                                  <div className="text-[8px] text-slate-400 font-bold uppercase">排片占比</div>
-                                </div>
-                                <div className="text-xs font-black text-slate-700">
-                                  {selectedMovie?.showCountRate || '0%'}
-                                </div>
-                              </div>
-                              <div className="flex flex-col">
-                                <div className="flex items-center gap-0.5 mb-0.5">
-                                  <Users size={9} className="text-amber-500" />
-                                  <div className="text-[8px] text-slate-400 font-bold uppercase">上座率</div>
-                                </div>
-                                <div className="text-xs font-black text-slate-700">
-                                  {selectedMovie?.avgSeatView || '0%'}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* 右边：趋势图 */}
-                          {movieDetail.boxTrends && movieDetail.boxTrends.length > 1 && (
-                            <div className="flex-1 h-24 bg-white/40 rounded-lg border border-white/60 px-2 py-1.5 flex flex-col relative overflow-hidden">
-                              <div className="flex items-center justify-between mb-1 relative z-10">
-                                <h3 className="text-[9px] font-black text-slate-700 flex items-center gap-1">
-                                  <TrendingUp size={10} className="text-rose-600" />
-                                  <span>近日趋势</span>
-                                </h3>
-                                <span className="text-[8px] text-slate-400 font-bold uppercase">7 Days</span>
-                              </div>
-
-                              <div className="flex-1 w-full min-h-0 relative">
-                                {(() => {
-                                  const trends = movieDetail.boxTrends.slice(-7);
-                                  const maxBox = Math.max(...trends.map(t => t.box)) || 100;
-                                  const minBox = Math.min(...trends.map(t => t.box)) || 0;
-                                  // Normalize to 0-100 range
-                                  const getX = (i: number) => (i / (trends.length - 1)) * 100;
-                                  const getY = (val: number) => 100 - ((val / maxBox) * 70 + 15); // Keep within 15-85% vertical space
-
-                                  const points = trends.map((t, i) => `${getX(i)},${getY(t.box)}`);
-                                  const areaPath = `M${points[0]} L${points.join(' L')} L100,120 L0,120 Z`;
-                                  const linePath = `M${points[0]} L${points.join(' L')}`;
-
-                                  return (
-                                    <div className="w-full h-full relative">
-                                      {/* SVG Chart */}
-                                      <svg className="w-full h-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
-                                        <defs>
-                                          <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="0%" stopColor="#e11d48" stopOpacity="0.2" />
-                                            <stop offset="100%" stopColor="#e11d48" stopOpacity="0" />
-                                          </linearGradient>
-                                        </defs>
-                                        <path d={areaPath} fill="url(#trendGradient)" />
-                                        <path d={linePath} fill="none" stroke="#e11d48" strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
-                                      </svg>
-
-                                      {/* HTML Points & Tooltips */}
-                                      {trends.map((t, i) => (
-                                        <div
-                                          key={i}
-                                          className="absolute group/point flex items-center justify-center w-4 h-4 -ml-2 -mt-2 cursor-pointer z-10"
-                                          style={{
-                                            left: `${getX(i)}%`,
-                                            top: `${getY(t.box)}%`,
-                                          }}
-                                        >
-                                          <div className={`w-1.5 h-1.5 rounded-full border-[1.5px] transition-all duration-300 group-hover/point:scale-150 group-hover/point:bg-rose-600 group-hover/point:border-white ${i === trends.length - 1 ? 'bg-rose-600 border-white shadow-sm scale-125' : 'bg-white border-rose-600'
-                                            }`} />
-
-                                          {/* Tooltip */}
-                                          <div className="absolute bottom-full mb-2 opacity-0 group-hover/point:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20">
-                                            <div className="bg-slate-800 text-white text-[9px] px-2 py-1 rounded shadow-lg font-bold flex flex-col items-center">
-                                              <span>{t.boxDesc}</span>
-                                              <span className="text-[8px] text-slate-400 font-normal">{i === trends.length - 1 ? 'Today' : t.date}</span>
-                                            </div>
-                                            <div className="w-2 h-2 bg-slate-800 rotate-45 mx-auto -mt-1"></div>
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  );
-                                })()}
+                          )}
+                          
+                          {/* 标题 */}
+                          {selectedXiaohongshuItem.title && (
+                            <h2 className="text-xl font-bold text-slate-800 mb-4">
+                              {selectedXiaohongshuItem.title}
+                            </h2>
+                          )}
+                          
+                          {/* 描述 */}
+                          {selectedXiaohongshuItem.desc && (
+                            <p className="text-slate-600 mb-4 whitespace-pre-wrap">
+                              {selectedXiaohongshuItem.desc}
+                            </p>
+                          )}
+                          
+                          {/* 作者信息 */}
+                          {selectedXiaohongshuItem.author && (
+                            <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg mb-4">
+                              {selectedXiaohongshuItem.author.avatar && (
+                                <img
+                                  src={getImageProxyUrl(selectedXiaohongshuItem.author.avatar)}
+                                  alt={selectedXiaohongshuItem.author.name}
+                                  className="w-12 h-12 rounded-full object-cover"
+                                  onError={(e) => {
+                                    const target = e.target as HTMLImageElement;
+                                    target.src = '';
+                                  }}
+                                />
+                              )}
+                              <div className="flex-1">
+                                <p className="font-semibold text-slate-800">
+                                  {selectedXiaohongshuItem.author.name || '未知用户'}
+                                </p>
                               </div>
                             </div>
                           )}
-                          </div>
-                        </div>
-
-                        {/* 右侧下方：影视解说 */}
-                        <div className="flex flex-col gap-2 mt-auto">
-                          <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 bg-[#00AEEC] rounded flex items-center justify-center text-white shadow-sm">
-                              <Play size={12} fill="currentColor" />
-                            </div>
-                            <div>
-                              <h4 className="text-xs font-black text-slate-800">B站影视解说</h4>
-                            </div>
-                            <span className="text-[8px] text-slate-400 font-bold uppercase tracking-widest ml-auto">Deep Analysis</span>
-                          </div>
-
-                          {bilibiliLoading ? (
-                            <div className="flex items-center justify-center py-8">
-                              <Loader2 className="animate-spin text-[#00AEEC]" size={20} />
-                            </div>
-                          ) : bilibiliComments.length === 0 ? (
-                            <div className="flex items-center justify-center py-8 text-slate-400 text-xs">
-                              暂无B站解说数据
-                            </div>
-                          ) : (
-                            <div className="relative">
-                              {/* 左箭头 */}
-                              {bilibiliScrollIndex > 0 && (
-                                <button
-                                  onClick={() => {
-                                    const newIndex = Math.max(0, bilibiliScrollIndex - 1);
-                                    setBilibiliScrollIndex(newIndex);
-                                    if (bilibiliScrollRef.current) {
-                                      const container = bilibiliScrollRef.current;
-                                      const scrollAmount = container.clientWidth;
-                                      container.scrollTo({
-                                        left: container.scrollLeft - scrollAmount,
-                                        behavior: 'smooth'
-                                      });
-                                    }
-                                  }}
-                                  className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-2 z-10 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg hover:bg-white transition-all border border-slate-200"
-                                >
-                                  <ChevronLeft size={16} className="text-slate-700" />
-                                </button>
+                          
+                          {/* 统计数据 */}
+                          {selectedXiaohongshuItem.stats && (
+                            <div className="flex items-center gap-4 text-slate-600 mb-4">
+                              {selectedXiaohongshuItem.stats.likes > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <Heart size={16} className="text-red-500" fill="currentColor" />
+                                  <span>{selectedXiaohongshuItem.stats.likes >= 1000 ? `${(selectedXiaohongshuItem.stats.likes / 1000).toFixed(1)}k` : selectedXiaohongshuItem.stats.likes}</span>
+                                </div>
                               )}
-                              
-                              {/* 滚动容器 */}
-                              <div
-                                ref={bilibiliScrollRef}
-                                className="flex gap-2 overflow-x-auto scrollbar-hide"
-                                style={{ 
-                                  scrollBehavior: 'smooth'
-                                }}
-                                onScroll={(e) => {
-                                  const container = e.currentTarget;
-                                  const scrollLeft = container.scrollLeft;
-                                  const containerWidth = container.clientWidth;
-                                  const cardWidth = container.children[0]?.clientWidth || 0;
-                                  const gap = 8;
-                                  const cardsPerPage = 4;
-                                  const newIndex = Math.round(scrollLeft / (cardWidth + gap));
-                                  if (newIndex !== bilibiliScrollIndex) {
-                                    setBilibiliScrollIndex(newIndex);
-                                  }
-                                  // 更新右箭头显示状态
-                                  const maxScroll = container.scrollWidth - container.clientWidth;
-                                  setCanScrollRight(scrollLeft < maxScroll - 10);
-                                }}
-                              >
-                                {bilibiliComments.map((item, i) => {
-                                  const videoUrl = item.url || (item.bvid ? `https://www.bilibili.com/video/${item.bvid}` : '#');
-                                  const coverUrl = item.cover || '';
-                                  const title = item.title || '无标题';
-                                  const authorName = item.author?.name || 'UP主';
-                                  const views = item.stats?.views || 0;
-                                  // 格式化时长显示
-                                  const formatDurationDisplay = (duration: string | undefined): string => {
-                                    if (!duration) return '';
-                                    // 如果已经是 mm:ss 格式，直接返回
-                                    if (typeof duration === 'string' && /^\d+:\d+$/.test(duration)) {
-                                      return duration;
-                                    }
-                                    // 如果是秒数（数字或数字字符串），转换为 mm:ss
-                                    const seconds = typeof duration === 'number' ? duration : parseInt(duration);
-                                    if (!isNaN(seconds) && seconds > 0) {
-                                      const mins = Math.floor(seconds / 60);
-                                      const secs = seconds % 60;
-                                      return `${mins}:${secs.toString().padStart(2, '0')}`;
-                                    }
-                                    return '';
-                                  };
-                                  
-                                  const duration = formatDurationDisplay(item.duration);
-                                  
-                                  // 使用图片代理接口
-                                  const getImageProxyUrl = (url: string) => {
-                                    if (!url) return '';
-                                    
-                                    // 确保URL包含协议
-                                    let fullUrl = url;
-                                    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-                                      fullUrl = 'https://' + url;
-                                    }
-                                    
-                                    // 如果是B站图片，使用代理
-                                    if (fullUrl.includes('hdslb.com') || fullUrl.includes('biliimg.com') || fullUrl.includes('bilicdn.com') || fullUrl.includes('b23.tv')) {
-                                      return `${getApiBase()}/image/proxy?url=${encodeURIComponent(fullUrl)}`;
-                                    }
-                                    return fullUrl;
-                                  };
-                                  
-                                  const imageUrl = getImageProxyUrl(coverUrl);
-                                  
-                                  return (
-                                    <a
-                                      key={item.id || `bili-${i}`}
-                                      href={videoUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                                      className="flex-shrink-0 w-[calc(25%-0.375rem)] bg-white p-2 rounded-lg border border-slate-100 shadow-sm hover:shadow-md transition-all group cursor-pointer"
-                                    >
-                                      <div className="w-full h-32 bg-slate-200 rounded relative overflow-hidden mb-2">
-                                        {imageUrl ? (
-                                          <>
-                                            <img
-                                              src={imageUrl}
-                                              alt={title}
-                                              className="w-full h-full object-cover"
-                                              onError={(e) => {
-                                                // 图片加载失败时显示占位符
-                                                const target = e.target as HTMLImageElement;
-                                                target.style.display = 'none';
-                                                const placeholder = target.parentElement?.querySelector('.img-placeholder') as HTMLElement;
-                                                if (placeholder) placeholder.style.display = 'flex';
-                                              }}
-                                            />
-                                            <div 
-                                              className="img-placeholder hidden w-full h-full bg-gradient-to-br from-[#00AEEC]/20 to-[#00AEEC]/5 items-center justify-center absolute inset-0"
-                                            >
-                                              <Play size={24} className="text-[#00AEEC]" />
-                                            </div>
-                                          </>
-                                        ) : (
-                                          <div className="w-full h-full bg-gradient-to-br from-[#00AEEC]/20 to-[#00AEEC]/5 flex items-center justify-center">
-                                            <Play size={24} className="text-[#00AEEC]" />
-                                          </div>
-                                        )}
-                                        <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/10 transition-colors">
-                                          <div className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center shadow-sm opacity-0 group-hover:opacity-100 transition-all transform scale-50 group-hover:scale-100">
-                                            <Play size={12} className="text-[#00AEEC] ml-0.5" fill="#00AEEC" />
-                                          </div>
-                                        </div>
-                                        {duration && (
-                                          <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 rounded text-[9px] text-white font-medium">
-                                            {duration}
-                                          </div>
-                                        )}
-                                      </div>
-                                      <div>
-                                        <h5 className="text-[10px] font-bold text-slate-700 line-clamp-2 leading-tight mb-1 group-hover:text-[#00AEEC] transition-colors">
-                                          {title}
-                                        </h5>
-                                        <div className="flex items-center justify-between text-[9px] text-slate-400">
-                                          <span className="truncate max-w-[60px]">
-                                            {authorName}
-                                          </span>
-                                          <span className="font-bold">
-                                            {views >= 10000 
-                                              ? `${(views / 10000).toFixed(1)}w` 
-                                              : views >= 1000
-                                              ? `${(views / 1000).toFixed(1)}k`
-                                              : views || '0'}
-                                          </span>
-                                        </div>
-                                      </div>
-                                    </a>
-                                  );
-                                })}
-                              </div>
-                              
-                              {/* 右箭头 */}
-                              {canScrollRight && bilibiliComments.length > 4 && (
-                                <button
-                                  onClick={() => {
-                                    if (bilibiliScrollRef.current) {
-                                      const container = bilibiliScrollRef.current;
-                                      const scrollAmount = container.clientWidth;
-                                      container.scrollTo({
-                                        left: container.scrollLeft + scrollAmount,
-                                        behavior: 'smooth'
-                                      });
-                                    }
-                                  }}
-                                  className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-2 z-10 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg hover:bg-white transition-all border border-slate-200"
-                                >
-                                  <ChevronRight size={16} className="text-slate-700" />
-                                </button>
+                              {selectedXiaohongshuItem.stats.comments > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <MessageSquare size={16} className="text-blue-500" />
+                                  <span>{selectedXiaohongshuItem.stats.comments >= 1000 ? `${(selectedXiaohongshuItem.stats.comments / 1000).toFixed(1)}k` : selectedXiaohongshuItem.stats.comments}</span>
+                                </div>
+                              )}
+                              {selectedXiaohongshuItem.stats.collects > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <Star size={16} className="text-yellow-500" fill="currentColor" />
+                                  <span>{selectedXiaohongshuItem.stats.collects >= 1000 ? `${(selectedXiaohongshuItem.stats.collects / 1000).toFixed(1)}k` : selectedXiaohongshuItem.stats.collects}</span>
+                                </div>
                               )}
                             </div>
                           )}
+                        </div>
+                        
+                        {/* 底部按钮 */}
+                        <div className="p-4 border-t border-slate-200 flex justify-end">
+                          <a
+                            href={selectedXiaohongshuItem.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 px-6 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors font-medium"
+                          >
+                            <span>前往小红书</span>
+                            <ExternalLink size={16} />
+                          </a>
                         </div>
                       </div>
                     </div>
-                  </div>
-
-                  {/* 社交热评 */}
-                  <div className="px-4 py-3 flex flex-col gap-3 bg-slate-50/50">
-
-                    {/* 微博 & 小红书 (并排) */}
-                    <div className="grid grid-cols-2 gap-0 relative">
-                      {/* 微博热评 */}
-                      <div className="flex flex-col gap-3 pr-4 relative">
-                        <div className="flex items-center gap-2 mb-1 pb-2 border-b border-slate-200/40">
-                          <div className="w-7 h-7 bg-[#E6162D] rounded-lg flex items-center justify-center text-white shadow-md">
-                            <Share2 size={14} />
-                          </div>
-                          <div>
-                            <h4 className="text-xs font-black text-slate-800">微博热评</h4>
-                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Real-time</p>
-                          </div>
-                        </div>
-
-                        {weiboLoading ? (
-                          <div className="flex items-center justify-center py-8">
-                            <Loader2 className="animate-spin text-red-600" size={20} />
-                          </div>
-                        ) : weiboComments.length === 0 ? (
-                          <div className="text-center py-8 text-slate-400 text-xs">
-                            暂无微博数据
-                          </div>
-                        ) : (
-                          <div className="flex flex-col gap-3 h-full">
-                            {weiboComments.map((comment, index) => {
-                              const avatarUrl = comment.author?.avatar ? getImageProxyUrl(comment.author.avatar) : '';
-                              const formatTime = (timeStr?: string) => {
-                                if (!timeStr) return '刚刚';
-                                try {
-                                  const date = new Date(timeStr);
-                                  const now = new Date();
-                                  const diff = now.getTime() - date.getTime();
-                                  const minutes = Math.floor(diff / 60000);
-                                  const hours = Math.floor(minutes / 60);
-                                  const days = Math.floor(hours / 24);
-                                  if (days > 0) return `${days}天前`;
-                                  if (hours > 0) return `${hours}小时前`;
-                                  if (minutes > 0) return `${minutes}分钟前`;
-                                  return '刚刚';
-                                } catch {
-                                  return '刚刚';
-                                }
-                              };
-                              
-                              // 渲染文本内容，处理话题和@提及
-                              const renderText = (text: string) => {
-                                if (!text) return null;
-                                const parts: React.ReactNode[] = [];
-                                let lastIndex = 0;
-                                
-                                // 匹配话题 #xxx# 和 @提及
-                                const regex = /(#([^#]+)#|@([^\s@]+))/g;
-                                let match;
-                                
-                                while ((match = regex.exec(text)) !== null) {
-                                  // 添加前面的普通文本
-                                  if (match.index > lastIndex) {
-                                    parts.push(text.substring(lastIndex, match.index));
-                                  }
-                                  
-                                  // 添加话题或@提及
-                                  if (match[0].startsWith('#')) {
-                                    parts.push(
-                                      <span key={match.index} className="text-[#ff6b9d] font-medium">
-                                        {match[0]}
-                                      </span>
-                                    );
-                                  } else {
-                                    parts.push(
-                                      <span key={match.index} className="text-[#1da1f2] font-medium">
-                                        {match[0]}
-                                      </span>
-                                    );
-                                  }
-                                  
-                                  lastIndex = regex.lastIndex;
-                                }
-                                
-                                // 添加剩余的文本
-                                if (lastIndex < text.length) {
-                                  parts.push(text.substring(lastIndex));
-                                }
-                                
-                                return parts.length > 0 ? parts : text;
-                              };
-
-                              return (
-                                <div 
-                                  key={comment.id || index} 
-                                  className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-all cursor-pointer"
-                                  onClick={() => comment.url && window.open(comment.url, '_blank')}
-                                >
-                                  {/* 用户信息 */}
-                                  <div className="flex items-start gap-2 mb-2">
-                                    <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-200 flex-shrink-0">
-                                      {avatarUrl ? (
-                                        <img 
-                                          src={avatarUrl} 
-                                          alt={comment.author?.name || ''} 
-                                          className="w-full h-full object-cover"
-                                          onError={(e) => {
-                                            const target = e.target as HTMLImageElement;
-                                            target.style.display = 'none';
-                                          }}
-                                        />
-                                      ) : (
-                                        <div className="w-full h-full bg-gradient-to-br from-red-400 to-pink-500 flex items-center justify-center text-white text-xs font-bold">
-                                          {comment.author?.name?.charAt(0) || '?'}
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2 mb-1">
-                                        <span className="text-[11px] font-bold text-slate-800 truncate">
-                                          {comment.author?.name || '微博用户'}
-                                        </span>
-                                        <span className="text-[9px] text-slate-400 flex-shrink-0">
-                                          {formatTime(comment.publishTime)}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  {/* 微博内容 */}
-                                  <div className="mb-2">
-                                    <p className="text-[11px] text-slate-700 leading-relaxed break-words">
-                                      {renderText(comment.text || '')}
-                                    </p>
-                                    
-                                    {/* 转发原文 */}
-                                    {comment.isRepost && comment.originalWeibo && (
-                                      <div className="mt-2 p-2 bg-slate-50 rounded-lg border border-slate-100">
-                                        <div className="text-[10px] text-slate-500 mb-1">
-                                          @{comment.originalWeibo.author || '原微博'}
-                                        </div>
-                                        <p className="text-[10px] text-slate-600 line-clamp-2">
-                                          {comment.originalWeibo.text || ''}
-                                        </p>
-                                      </div>
-                                    )}
-
-                                    {/* 图片 */}
-                                    {comment.images && comment.images.length > 0 && (
-                                      <div className="mt-2 grid grid-cols-4 gap-1 rounded-lg overflow-hidden">
-                                        {comment.images.slice(0, 9).map((img: string, imgIndex: number) => (
-                                          <div key={imgIndex} className="aspect-square bg-slate-100 rounded overflow-hidden">
-                                            <img 
-                                              src={getImageProxyUrl(img)} 
-                                              alt="" 
-                                              className="w-full h-full object-cover"
-                                              onError={(e) => {
-                                                const target = e.target as HTMLImageElement;
-                                                target.style.display = 'none';
-                                              }}
-                                            />
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  {/* 互动数据 */}
-                                  <div className="flex items-center gap-4 text-slate-400 pt-2 border-t border-slate-100">
-                                    <div className="flex items-center gap-1 hover:text-red-500 transition-colors">
-                                      <Share2 size={11} />
-                                      <span className="text-[9px] font-medium">
-                                        {comment.stats?.reposts > 0 ? (comment.stats.reposts > 1000 ? `${(comment.stats.reposts / 1000).toFixed(1)}k` : comment.stats.reposts) : ''}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-1 hover:text-blue-500 transition-colors">
-                                      <MessageSquare size={11} />
-                                      <span className="text-[9px] font-medium">
-                                        {comment.stats?.comments > 0 ? (comment.stats.comments > 1000 ? `${(comment.stats.comments / 1000).toFixed(1)}k` : comment.stats.comments) : ''}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-1 hover:text-red-500 transition-colors">
-                                      <Heart size={11} />
-                                      <span className="text-[9px] font-medium">
-                                        {comment.stats?.likes > 0 ? (comment.stats.likes > 1000 ? `${(comment.stats.likes / 1000).toFixed(1)}k` : comment.stats.likes) : ''}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* 垂直分隔线 */}
-                      <div className="absolute left-1/2 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-slate-300/60 to-transparent transform -translate-x-1/2 z-10"></div>
-                      
-                      {/* 小红书热评 */}
-                      <div className="flex flex-col gap-3 pl-4 relative">
-                        <div className="flex items-center gap-2 mb-1 pb-2 border-b border-slate-200/40">
-                          <div className="w-7 h-7 bg-[#FF2442] rounded-lg flex items-center justify-center text-white shadow-md">
-                            <Zap size={14} />
-                          </div>
-                          <div>
-                            <h4 className="text-xs font-black text-slate-800">小红书热评</h4>
-                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Visuals</p>
-                          </div>
-                        </div>
-
-                        {xiaohongshuLoading ? (
-                          <div className="flex items-center justify-center py-8">
-                            <Loader2 className="animate-spin text-rose-600" size={20} />
-                          </div>
-                        ) : xiaohongshuComments.length === 0 ? (
-                          <div className="text-center py-8 text-slate-400 text-xs">
-                            暂无小红书数据
-                          </div>
-                        ) : (
-                          <div className="h-full">
-                            <Masonry
-                              breakpointCols={{
-                                default: 3,
-                                1200: 3,
-                                992: 3,
-                                768: 2,
-                                576: 2
-                              }}
-                              className="masonry-grid"
-                              columnClassName="masonry-grid_column"
-                            >
-                              {xiaohongshuComments
-                                .filter(item => item.cover && item.cover.trim() !== '') // 过滤掉没有图片的项
-                                .map((item, i) => {
-                                const coverUrl = item.cover || '';
-                                const imageUrl = getImageProxyUrl(coverUrl);
-                                
-                                return (
-                                  <div
-                                    key={item.id || `xhs-${i}`}
-                                    onClick={() => {
-                                      setSelectedXiaohongshuItem(item);
-                                      setShowXiaohongshuModal(true);
-                                    }}
-                                    className="group flex flex-col rounded-lg overflow-hidden bg-slate-200 border border-slate-100 shadow-sm hover:shadow-md transition-all mb-2 cursor-pointer"
-                                  >
-                                    <div className="relative w-full">
-                                      {imageUrl ? (
-                                        <img
-                                          src={imageUrl}
-                                          alt={item.title}
-                                          className="w-full h-auto object-cover group-hover:scale-105 transition-transform duration-300"
-                                          onError={(e) => {
-                                            const target = e.target as HTMLImageElement;
-                                            target.style.display = 'none';
-                                          }}
-                                        />
-                                      ) : (
-                                        <div className="w-full h-full bg-gradient-to-br from-pink-50 to-rose-50 flex items-center justify-center">
-                                          <Zap size={16} className="text-rose-300" />
-                                        </div>
-                                      )}
-                                      {/* 视频标识 */}
-                                      {item.type === 'video' && (
-                                        <div className="absolute top-0.5 right-0.5 w-3 h-3 bg-black/60 rounded flex items-center justify-center">
-                                          <Play size={8} className="text-white" fill="white" />
-                                        </div>
-                                      )}
-                                    </div>
-                                    {/* 标题和统计信息 - 一直显示 */}
-                                    <div className="p-2 bg-white">
-                                      <p className="text-[11px] text-slate-700 font-medium line-clamp-2 mb-1">
-                                        {item.title}
-                                      </p>
-                                      <div className="flex items-center gap-2 text-[8px] text-slate-400">
-                                        {item.stats?.likes > 0 && (
-                                          <span>❤️ {item.stats.likes >= 1000 ? `${(item.stats.likes / 1000).toFixed(1)}k` : item.stats.likes}</span>
-                                        )}
-                                        {item.stats?.comments > 0 && (
-                                          <span>💬 {item.stats.comments >= 1000 ? `${(item.stats.comments / 1000).toFixed(1)}k` : item.stats.comments}</span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </Masonry>
-                          </div>
-                        )}
-                        
-                        {/* 小红书弹窗 */}
-                        {showXiaohongshuModal && selectedXiaohongshuItem && (
-                          <div 
-                            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-                            onClick={() => setShowXiaohongshuModal(false)}
-                          >
-                            <div 
-                              className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              {/* 关闭按钮 */}
-                              <div className="flex items-center justify-between p-4 border-b border-slate-200">
-                                <h3 className="text-lg font-bold text-slate-800">小红书详情</h3>
-                                <button
-                                  onClick={() => setShowXiaohongshuModal(false)}
-                                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                                >
-                                  <X size={20} className="text-slate-600" />
-                                </button>
-                              </div>
-                              
-                              {/* 内容区域 */}
-                              <div className="flex-1 overflow-y-auto p-6">
-                                {/* 图片 */}
-                                {selectedXiaohongshuItem.cover && (
-                                  <div className="mb-4 rounded-lg overflow-hidden">
-                                    <img
-                                      src={getImageProxyUrl(selectedXiaohongshuItem.cover)}
-                                      alt={selectedXiaohongshuItem.title}
-                                      className="w-full h-auto object-contain max-h-[400px] mx-auto"
-                                      onError={(e) => {
-                                        const target = e.target as HTMLImageElement;
-                                        target.style.display = 'none';
-                                      }}
-                                    />
-                                  </div>
-                                )}
-                                
-                                {/* 标题 */}
-                                {selectedXiaohongshuItem.title && (
-                                  <h2 className="text-xl font-bold text-slate-800 mb-4">
-                                    {selectedXiaohongshuItem.title}
-                                  </h2>
-                                )}
-                                
-                                {/* 描述 */}
-                                {selectedXiaohongshuItem.desc && (
-                                  <p className="text-slate-600 mb-4 whitespace-pre-wrap">
-                                    {selectedXiaohongshuItem.desc}
-                                  </p>
-                                )}
-                                
-                                {/* 作者信息 */}
-                                {selectedXiaohongshuItem.author && (
-                                  <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg mb-4">
-                                    {selectedXiaohongshuItem.author.avatar && (
-                                      <img
-                                        src={getImageProxyUrl(selectedXiaohongshuItem.author.avatar)}
-                                        alt={selectedXiaohongshuItem.author.name}
-                                        className="w-12 h-12 rounded-full object-cover"
-                                        onError={(e) => {
-                                          const target = e.target as HTMLImageElement;
-                                          target.src = '';
-                                        }}
-                                      />
-                                    )}
-                                    <div className="flex-1">
-                                      <p className="font-semibold text-slate-800">
-                                        {selectedXiaohongshuItem.author.name || '未知用户'}
-                                      </p>
-                                    </div>
-                                  </div>
-                                )}
-                                
-                                {/* 统计数据 */}
-                                {selectedXiaohongshuItem.stats && (
-                                  <div className="flex items-center gap-4 text-slate-600 mb-4">
-                                    {selectedXiaohongshuItem.stats.likes > 0 && (
-                                      <div className="flex items-center gap-1">
-                                        <Heart size={16} className="text-red-500" fill="currentColor" />
-                                        <span>{selectedXiaohongshuItem.stats.likes >= 1000 ? `${(selectedXiaohongshuItem.stats.likes / 1000).toFixed(1)}k` : selectedXiaohongshuItem.stats.likes}</span>
-                                      </div>
-                                    )}
-                                    {selectedXiaohongshuItem.stats.comments > 0 && (
-                                      <div className="flex items-center gap-1">
-                                        <MessageSquare size={16} className="text-blue-500" />
-                                        <span>{selectedXiaohongshuItem.stats.comments >= 1000 ? `${(selectedXiaohongshuItem.stats.comments / 1000).toFixed(1)}k` : selectedXiaohongshuItem.stats.comments}</span>
-                                      </div>
-                                    )}
-                                    {selectedXiaohongshuItem.stats.collects > 0 && (
-                                      <div className="flex items-center gap-1">
-                                        <Star size={16} className="text-yellow-500" fill="currentColor" />
-                                        <span>{selectedXiaohongshuItem.stats.collects >= 1000 ? `${(selectedXiaohongshuItem.stats.collects / 1000).toFixed(1)}k` : selectedXiaohongshuItem.stats.collects}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                              
-                              {/* 底部按钮 */}
-                              <div className="p-4 border-t border-slate-200 flex justify-end">
-                                <a
-                                  href={selectedXiaohongshuItem.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex items-center gap-2 px-6 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors font-medium"
-                                >
-                                  <span>前往小红书</span>
-                                  <ExternalLink size={16} />
-                                </a>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-            </div>
-          </div>
-        </div>
+                  )}
                 </div>
               ) : selectedMovie ? (
                 <div className="flex-1 flex flex-col items-center justify-center relative z-10">
@@ -1508,86 +994,18 @@ const HotDramaView: React.FC = () => {
         {mainTab === 'webSeries' && (
           <div className="flex-1 flex gap-4 overflow-hidden">
             {/* 左侧：网播热剧排行列表 (1/4) */}
-            <div className="w-1/4 flex flex-col bg-white/40 backdrop-blur-md rounded-md border border-white/60 overflow-hidden">
-              <div className="px-3 py-2 border-b border-white/60 bg-gradient-to-r from-rose-50/80 to-pink-50/80">
-                <h3 className="text-xs font-black text-slate-800">网播热剧排行</h3>
-              </div>
-
-              <div className="flex-1 overflow-y-auto custom-scrollbar">
-                {webSeriesLoading ? (
-                  <div className="flex flex-col items-center justify-center py-24">
-                    <Loader2 className="animate-spin text-rose-600" size={24} />
-                    <p className="text-slate-400 font-bold text-xs mt-3">加载中...</p>
-                  </div>
-                ) : webSeriesList.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-24">
-                    <Tv size={32} className="text-slate-400" />
-                    <p className="text-slate-500 font-medium text-sm mt-3">暂无数据</p>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-white/40">
-                    {webSeriesList.map((series, index) => (
-                      <div
-                        key={series.seriesId}
-                        onClick={() => setSelectedWebSeries(series)}
-                        className={`px-3 py-2 cursor-pointer transition-all hover:bg-white/60 ${selectedWebSeries?.seriesId === series.seriesId
-                          ? 'bg-rose-50/80 border-l-4 border-rose-600'
-                          : ''
-                          }`}
-                      >
-                        {/* 第一行：排名 + 标题 */}
-                        <div className="flex items-center justify-between gap-2 mb-1">
-                          <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                            <span className={`text-[10px] font-black flex-shrink-0 w-5 ${index === 0 ? 'text-red-500' :
-                              index === 1 ? 'text-orange-500' :
-                                index === 2 ? 'text-amber-500' :
-                                  'text-slate-400'
-                              }`}>
-                              {String(index + 1).padStart(2, '0')}
-                            </span>
-                            <h4 className="text-sm font-black text-slate-800 truncate flex-1">
-                              {series.title}
-                            </h4>
-                            {selectedWebSeries?.seriesId === series.seriesId && (
-                              <Star size={12} className="text-rose-600 fill-rose-600 flex-shrink-0" />
-                            )}
-                          </div>
-                        </div>
-
-                        {/* 第二行：平台 + 上线信息 + 热度 */}
-                        <div className="flex items-center gap-2 mb-1">
-                          {series.platformDesc && (
-                            <div className="flex items-center gap-1 overflow-hidden">
-                              <Monitor size={10} className="text-blue-500 flex-shrink-0" />
-                              <span className="text-[10px] text-slate-500 truncate">{series.platformDesc}</span>
-                            </div>
-                          )}
-                          {series.releaseInfo && (
-                            <div className="flex items-center gap-1 whitespace-nowrap">
-                              <Calendar size={10} className="text-emerald-500 flex-shrink-0" />
-                              <span className="text-[10px] text-slate-400 font-normal">{series.releaseInfo}</span>
-                            </div>
-                          )}
-                          {series.currHeatDesc && (
-                            <div className="flex items-center gap-1 whitespace-nowrap ml-auto">
-                              <TrendingUp size={10} className="text-rose-500 flex-shrink-0" />
-                              <span className="text-[10px] text-rose-600 font-black">{series.currHeatDesc}</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* 第三行：类型 */}
-                        {series.category && (
-                          <div className="flex items-center gap-1 text-[10px] text-slate-400">
-                            <span className="font-medium">{series.category}</span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
+            <RankingList
+              ref={scrollContainerRef}
+              items={webSeriesList.map(s => ({ ...s, id: s.seriesId }))}
+              loading={webSeriesLoading}
+              selectedId={selectedWebSeries?.seriesId || null}
+              onSelect={(item) => {
+                const series = webSeriesList.find(s => s.seriesId === item.id);
+                if (series) setSelectedWebSeries(series);
+              }}
+              type="webSeries"
+              title="网播热剧排行"
+            />
 
             {/* 右侧：网播热剧详情 (3/4) */}
             <div className="w-3/4 flex flex-col bg-white/40 backdrop-blur-md rounded-md border border-white/60 overflow-hidden relative">
@@ -1602,578 +1020,38 @@ const HotDramaView: React.FC = () => {
                 </div>
               ) : webSeriesDetail ? (
                 <div ref={detailScrollRef} className="flex-1 flex flex-col overflow-y-auto custom-scrollbar relative z-10">
-                  {/* 剧集头部信息 - 与电影布局一致 */}
-                  <div className="px-4 py-3 border-b border-white/60 bg-gradient-to-br from-white/80 to-white/40">
-                    <div className="flex items-stretch gap-4">
-                      {/* 最左侧：剧集海报 */}
-                      <div className="relative group flex-shrink-0 flex flex-col">
-                        {webSeriesDetail.imgUrl ? (
-                          <div className="w-64 bg-slate-200 rounded-lg overflow-hidden border-2 border-white shadow-xl" style={{ aspectRatio: '2/3' }}>
-                            <img
-                              src={webSeriesDetail.imgUrl}
-                              alt={webSeriesDetail.name}
-                              className="w-full h-full object-cover rounded-lg transition-transform duration-500 group-hover:scale-[1.02]"
-                            />
-                          </div>
-                        ) : (
-                          <div className="w-64 h-full bg-slate-200 rounded-lg flex items-center justify-center text-slate-400 border-2 border-white shadow-xl" style={{ aspectRatio: '2/3' }}>
-                            <Tv size={32} />
-                          </div>
-                        )}
-                        <div className="absolute -bottom-3 -right-3 w-12 h-12 bg-rose-500 rounded-full flex items-center justify-center text-white shadow-lg border-4 border-white transform rotate-12 group-hover:rotate-0 transition-transform z-10">
-                          <Tv size={24} />
-                        </div>
-                      </div>
-
-                      {/* 右侧：标题、指标和趋势 */}
-                      <div className="flex-1 flex flex-col min-w-0 justify-between">
-                        <div className="flex flex-col">
-                          {/* 标题和基础信息 */}
-                          <div className="mb-2">
-                            <div className="flex items-center justify-between mb-1.5">
-                              <div className="flex items-center gap-2">
-                                <h2 className="text-xl font-black text-slate-800 tracking-tight truncate">{webSeriesDetail.name}</h2>
-                                <div className="px-1.5 py-0.5 bg-rose-100 text-rose-600 text-[9px] font-black rounded uppercase tracking-wider flex-shrink-0">Hot</div>
-                              </div>
-                              <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium bg-white/50 px-1.5 py-0.5 rounded-md border border-white/60">
-                                <Zap size={10} className="text-amber-500" />
-                                <span>{webSeriesDetail.releaseInfo || webSeriesDetail.platformDesc || ''}</span>
-                              </div>
-                            </div>
-
-                            <div className="flex flex-wrap gap-1.5">
-                              {webSeriesDetail.platformDesc && (
-                                <span className="px-1.5 py-0.5 text-[9px] font-bold rounded border bg-blue-50 text-blue-600 border-blue-200">
-                                  {webSeriesDetail.platformDesc}
-                                </span>
-                              )}
-                              {webSeriesDetail.category?.split(',').map((cat, i) => (
-                                <span key={i} className={`px-1.5 py-0.5 text-[9px] font-bold rounded border ${i % 3 === 0 ? 'bg-blue-50 text-blue-600 border-blue-200' :
-                                  i % 3 === 1 ? 'bg-purple-50 text-purple-600 border-purple-200' :
-                                    'bg-emerald-50 text-emerald-600 border-emerald-200'
-                                  }`}>
-                                  {cat.trim()}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* 右侧上方：左右布局 - 指标和趋势 */}
-                          <div className="flex gap-2 mb-1.5">
-                          {/* 左边：4个指标 */}
-                          <div className="flex-1 bg-white/50 rounded-lg p-2 border border-white/60 shadow-sm">
-                            <div className="grid grid-cols-2 gap-2">
-                              <div className="flex flex-col">
-                                <div className="flex items-center gap-0.5 mb-0.5">
-                                  <TrendingUp size={9} className="text-rose-500" />
-                                  <div className="text-[8px] text-slate-400 font-bold uppercase">当前热度</div>
-                                </div>
-                                <div className="text-xs font-black text-rose-600">
-                                  {selectedWebSeries?.currHeatDesc || '0'}
-                                </div>
-                              </div>
-                              {webSeriesDetail.historyMaxHeat && (
-                                <div className="flex flex-col">
-                                  <div className="flex items-center gap-0.5 mb-0.5">
-                                    <Award size={9} className="text-emerald-500" />
-                                    <div className="text-[8px] text-slate-400 font-bold uppercase">历史最高</div>
-                                  </div>
-                                  <div className="text-xs font-black text-emerald-600">
-                                    {webSeriesDetail.historyMaxHeat.toFixed(2)}
-                                  </div>
-                                </div>
-                              )}
-                              {webSeriesDetail.commentCount && (
-                                <div className="flex flex-col">
-                                  <div className="flex items-center gap-0.5 mb-0.5">
-                                    <MessageSquare size={9} className="text-blue-500" />
-                                    <div className="text-[8px] text-slate-400 font-bold uppercase">评论数</div>
-                                  </div>
-                                  <div className="text-xs font-black text-slate-700">
-                                    {webSeriesDetail.commentCount}
-                                  </div>
-                                </div>
-                              )}
-                              {webSeriesDetail.sumCommentCount && (
-                                <div className="flex flex-col">
-                                  <div className="flex items-center gap-0.5 mb-0.5">
-                                    <Users size={9} className="text-amber-500" />
-                                    <div className="text-[8px] text-slate-400 font-bold uppercase">累计评论</div>
-                                  </div>
-                                  <div className="text-xs font-black text-slate-700">
-                                    {webSeriesDetail.sumCommentCount}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* 右边：趋势图 */}
-                          {webSeriesDetail.heatTrends && webSeriesDetail.heatTrends.length > 1 && (
-                            <div className="flex-1 h-24 bg-white/40 rounded-lg border border-white/60 px-2 py-1.5 flex flex-col relative overflow-hidden">
-                              <div className="flex items-center justify-between mb-1 relative z-10">
-                                <h3 className="text-[9px] font-black text-slate-700 flex items-center gap-1">
-                                  <TrendingUp size={10} className="text-rose-600" />
-                                  <span>近日趋势</span>
-                                </h3>
-                                <span className="text-[8px] text-slate-400 font-bold uppercase">7 Days</span>
-                              </div>
-
-                              <div className="flex-1 w-full min-h-0 relative">
-                                {(() => {
-                                  const trends = webSeriesDetail.heatTrends.slice(-7);
-                                  const maxHeat = Math.max(...trends.map(t => t.heat)) || 100;
-                                  const minHeat = Math.min(...trends.map(t => t.heat)) || 0;
-                                  const getX = (i: number) => (i / (trends.length - 1)) * 100;
-                                  const getY = (val: number) => 100 - ((val / maxHeat) * 70 + 15);
-
-                                  const points = trends.map((t, i) => `${getX(i)},${getY(t.heat)}`);
-                                  const areaPath = `M${points[0]} L${points.join(' L')} L100,120 L0,120 Z`;
-                                  const linePath = `M${points[0]} L${points.join(' L')}`;
-
-                                  return (
-                                    <div className="w-full h-full relative">
-                                      <svg className="w-full h-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
-                                        <defs>
-                                          <linearGradient id="heatTrendGradient" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="0%" stopColor="#e11d48" stopOpacity="0.2" />
-                                            <stop offset="100%" stopColor="#e11d48" stopOpacity="0" />
-                                          </linearGradient>
-                                        </defs>
-                                        <path d={areaPath} fill="url(#heatTrendGradient)" />
-                                        <path d={linePath} fill="none" stroke="#e11d48" strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
-                                      </svg>
-
-                                      {trends.map((t, i) => {
-                                        const date = new Date(t.date);
-                                        const month = String(date.getMonth() + 1).padStart(2, '0');
-                                        const day = String(date.getDate()).padStart(2, '0');
-                                        return (
-                                          <div
-                                            key={i}
-                                            className="absolute group/point flex items-center justify-center w-4 h-4 -ml-2 -mt-2 cursor-pointer z-10"
-                                            style={{
-                                              left: `${getX(i)}%`,
-                                              top: `${getY(t.heat)}%`,
-                                            }}
-                                          >
-                                            <div className={`w-1.5 h-1.5 rounded-full border-[1.5px] transition-all duration-300 group-hover/point:scale-150 group-hover/point:bg-rose-600 group-hover/point:border-white ${i === trends.length - 1 ? 'bg-rose-600 border-white shadow-sm scale-125' : 'bg-white border-rose-600'
-                                              }`} />
-
-                                            <div className="absolute bottom-full mb-2 opacity-0 group-hover/point:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20">
-                                              <div className="bg-slate-800 text-white text-[9px] px-2 py-1 rounded shadow-lg font-bold flex flex-col items-center">
-                                                <span>{t.heat.toFixed(0)}</span>
-                                                <span className="text-[8px] text-slate-400 font-normal">{i === trends.length - 1 ? 'Today' : `${month}/${day}`}</span>
-                                              </div>
-                                              <div className="w-2 h-2 bg-slate-800 rotate-45 mx-auto -mt-1"></div>
-                                            </div>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-                            </div>
-                          )}
-                          </div>
-                        </div>
-
-                        {/* 右侧下方：B站影视解说 */}
-                        <div className="flex flex-col gap-2 mt-auto">
-                          <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 bg-[#00AEEC] rounded flex items-center justify-center text-white shadow-sm">
-                              <Play size={12} fill="currentColor" />
-                            </div>
-                            <div>
-                              <h4 className="text-xs font-black text-slate-800">B站影视解说</h4>
-                            </div>
-                            <span className="text-[8px] text-slate-400 font-bold uppercase tracking-widest ml-auto">Deep Analysis</span>
-                          </div>
-                          {webSeriesBilibiliLoading ? (
-                            <div className="flex items-center justify-center py-8">
-                              <Loader2 className="animate-spin text-[#00AEEC]" size={20} />
-                            </div>
-                          ) : webSeriesBilibiliComments.length === 0 ? (
-                            <div className="flex items-center justify-center py-8 text-slate-400 text-xs">
-                              暂无B站解说数据
-                            </div>
-                          ) : (
-                            <div className="relative">
-                              {/* 左箭头 */}
-                              {webSeriesBilibiliScrollIndex > 0 && (
-                                <button
-                                  onClick={() => {
-                                    const newIndex = Math.max(0, webSeriesBilibiliScrollIndex - 1);
-                                    setWebSeriesBilibiliScrollIndex(newIndex);
-                                    if (webSeriesBilibiliScrollRef.current) {
-                                      const container = webSeriesBilibiliScrollRef.current;
-                                      const scrollAmount = container.clientWidth;
-                                      container.scrollTo({
-                                        left: container.scrollLeft - scrollAmount,
-                                        behavior: 'smooth'
-                                      });
-                                    }
-                                  }}
-                                  className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-2 z-10 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg hover:bg-white transition-all border border-slate-200"
-                                >
-                                  <ChevronLeft size={16} className="text-slate-700" />
-                                </button>
-                              )}
-                              
-                              {/* 滚动容器 */}
-                              <div
-                                ref={webSeriesBilibiliScrollRef}
-                                className="flex gap-2 overflow-x-auto scrollbar-hide"
-                                style={{ 
-                                  scrollBehavior: 'smooth'
-                                }}
-                                onScroll={(e) => {
-                                  const container = e.currentTarget;
-                                  const scrollLeft = container.scrollLeft;
-                                  const scrollWidth = container.scrollWidth;
-                                  const clientWidth = container.clientWidth;
-                                  const maxScroll = scrollWidth - clientWidth;
-                                  const currentIndex = Math.round(scrollLeft / clientWidth);
-                                  setWebSeriesBilibiliScrollIndex(currentIndex);
-                                  setWebSeriesCanScrollRight(scrollLeft < maxScroll - 10);
-                                }}
-                              >
-                                {webSeriesBilibiliComments.map((item, i) => (
-                                  <div
-                                    key={item.id || i}
-                                    className="flex-shrink-0 w-56 bg-white rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow cursor-pointer group"
-                                    onClick={() => window.open(item.url, '_blank')}
-                                  >
-                                    <div className="relative">
-                                      {item.cover ? (
-                                        <img
-                                          src={getImageProxyUrl(item.cover)}
-                                          alt={item.title}
-                                          className="w-full h-32 object-cover group-hover:scale-105 transition-transform duration-300"
-                                        />
-                                      ) : (
-                                        <div className="w-full h-32 bg-gradient-to-br from-blue-50 to-cyan-50 flex items-center justify-center">
-                                          <Play size={24} className="text-blue-300" />
-                                        </div>
-                                      )}
-                                      {item.duration && (
-                                        <div className="absolute bottom-1 right-1 bg-black/70 text-white text-[8px] px-1 py-0.5 rounded font-medium">
-                                          {item.duration}
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div className="p-2">
-                                      <h4 className="text-xs font-bold text-slate-800 line-clamp-2 mb-1 group-hover:text-rose-600 transition-colors">
-                                        {item.title}
-                                      </h4>
-                                      <div className="flex items-center gap-1.5 text-[9px] text-slate-400">
-                                        {item.author?.name && (
-                                          <>
-                                            <span className="truncate">{item.author.name}</span>
-                                            <span>•</span>
-                                          </>
-                                        )}
-                                        <span>{item.stats?.views >= 10000 ? `${(item.stats.views / 10000).toFixed(1)}万` : item.stats?.views || 0}播放</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-
-                              {/* 右箭头 */}
-                              {webSeriesCanScrollRight && (
-                                <button
-                                  onClick={() => {
-                                    const newIndex = webSeriesBilibiliScrollIndex + 1;
-                                    setWebSeriesBilibiliScrollIndex(newIndex);
-                                    if (webSeriesBilibiliScrollRef.current) {
-                                      const container = webSeriesBilibiliScrollRef.current;
-                                      const scrollAmount = container.clientWidth;
-                                      container.scrollTo({
-                                        left: container.scrollLeft + scrollAmount,
-                                        behavior: 'smooth'
-                                      });
-                                    }
-                                  }}
-                                  className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-2 z-10 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg hover:bg-white transition-all border border-slate-200"
-                                >
-                                  <ChevronRight size={16} className="text-slate-700" />
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  {/* 剧集头部信息 */}
+                  <DetailHeader
+                    name={webSeriesDetail.name}
+                    imgUrl={webSeriesDetail.imgUrl}
+                    releaseInfo={webSeriesDetail.releaseInfo || webSeriesDetail.platformDesc || ''}
+                    category={webSeriesDetail.category}
+                    platformDesc={webSeriesDetail.platformDesc}
+                    type="webSeries"
+                    metrics={getWebSeriesMetrics(webSeriesDetail, selectedWebSeries)}
+                    trends={getWebSeriesTrends(webSeriesDetail)}
+                    trendLabel="近日趋势"
+                    trendGradientId="webSeriesTrendGradient"
+                    rightBottomContent={
+                      <BilibiliVideoList
+                        videos={webSeriesBilibiliComments}
+                        loading={webSeriesBilibiliLoading}
+                        title="B站影视解说"
+                      />
+                    }
+                  />
 
                   {/* 社交热评 */}
-                  <div className="px-4 py-3 flex flex-col gap-3 bg-slate-50/50">
-                    {/* 微博 & 小红书 (并排) */}
-                    <div className="grid grid-cols-2 gap-0 relative">
-                      {/* 微博热评 */}
-                      <div className="flex flex-col gap-3 pr-4 relative">
-                        <div className="flex items-center gap-2 mb-1 pb-2 border-b border-slate-200/40">
-                          <div className="w-7 h-7 bg-[#E6162D] rounded-lg flex items-center justify-center text-white shadow-md">
-                            <Share2 size={14} />
-                          </div>
-                          <div>
-                            <h4 className="text-xs font-black text-slate-800">微博热评</h4>
-                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Real-time</p>
-                          </div>
-                        </div>
-
-                        {webSeriesWeiboLoading ? (
-                          <div className="flex items-center justify-center py-8">
-                            <Loader2 className="animate-spin text-red-600" size={20} />
-                          </div>
-                        ) : webSeriesWeiboComments.length === 0 ? (
-                          <div className="text-center py-8 text-slate-400 text-xs">暂无微博数据</div>
-                        ) : (
-                          <div className="flex flex-col gap-3 h-full">
-                            {webSeriesWeiboComments.map((comment, index) => {
-                              const avatarUrl = comment.author?.avatar ? getImageProxyUrl(comment.author.avatar) : '';
-                              const formatTime = (timeStr?: string) => {
-                                if (!timeStr) return '刚刚';
-                                try {
-                                  const date = new Date(timeStr);
-                                  const now = new Date();
-                                  const diff = now.getTime() - date.getTime();
-                                  const minutes = Math.floor(diff / 60000);
-                                  const hours = Math.floor(minutes / 60);
-                                  const days = Math.floor(hours / 24);
-                                  if (days > 0) return `${days}天前`;
-                                  if (hours > 0) return `${hours}小时前`;
-                                  if (minutes > 0) return `${minutes}分钟前`;
-                                  return '刚刚';
-                                } catch {
-                                  return '刚刚';
-                                }
-                              };
-                              
-                              const renderText = (text: string) => {
-                                if (!text) return null;
-                                const parts: React.ReactNode[] = [];
-                                let lastIndex = 0;
-                                const regex = /(#([^#]+)#|@([^\s@]+))/g;
-                                let match;
-                                while ((match = regex.exec(text)) !== null) {
-                                  if (match.index > lastIndex) {
-                                    parts.push(text.substring(lastIndex, match.index));
-                                  }
-                                  if (match[0].startsWith('#')) {
-                                    parts.push(
-                                      <span key={match.index} className="text-[#ff6b9d] font-medium">
-                                        {match[0]}
-                                      </span>
-                                    );
-                                  } else {
-                                    parts.push(
-                                      <span key={match.index} className="text-[#1da1f2] font-medium">
-                                        {match[0]}
-                                      </span>
-                                    );
-                                  }
-                                  lastIndex = regex.lastIndex;
-                                }
-                                if (lastIndex < text.length) {
-                                  parts.push(text.substring(lastIndex));
-                                }
-                                return parts.length > 0 ? parts : text;
-                              };
-
-                              return (
-                                <div 
-                                  key={comment.id || index} 
-                                  className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-all cursor-pointer"
-                                  onClick={() => comment.url && window.open(comment.url, '_blank')}
-                                >
-                                  <div className="flex items-start gap-2 mb-2">
-                                    <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-200 flex-shrink-0">
-                                      {avatarUrl ? (
-                                        <img 
-                                          src={avatarUrl} 
-                                          alt={comment.author?.name || ''} 
-                                          className="w-full h-full object-cover"
-                                          onError={(e) => {
-                                            const target = e.target as HTMLImageElement;
-                                            target.style.display = 'none';
-                                          }}
-                                        />
-                                      ) : (
-                                        <div className="w-full h-full bg-gradient-to-br from-red-400 to-pink-500 flex items-center justify-center text-white text-xs font-bold">
-                                          {comment.author?.name?.charAt(0) || '?'}
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2 mb-1">
-                                        <span className="text-[11px] font-bold text-slate-800 truncate">
-                                          {comment.author?.name || '微博用户'}
-                                        </span>
-                                        <span className="text-[9px] text-slate-400 flex-shrink-0">
-                                          {formatTime(comment.publishTime)}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="mb-2">
-                                    <p className="text-[11px] text-slate-700 leading-relaxed break-words">
-                                      {renderText(comment.text || '')}
-                                    </p>
-                                    
-                                    {comment.isRepost && comment.originalWeibo && (
-                                      <div className="mt-2 p-2 bg-slate-50 rounded-lg border border-slate-100">
-                                        <div className="text-[10px] text-slate-500 mb-1">
-                                          @{comment.originalWeibo.author || '原微博'}
-                                        </div>
-                                        <p className="text-[10px] text-slate-600 line-clamp-2">
-                                          {comment.originalWeibo.text || ''}
-                                        </p>
-                                      </div>
-                                    )}
-
-                                    {comment.images && comment.images.length > 0 && (
-                                      <div className="mt-2 grid grid-cols-4 gap-1 rounded-lg overflow-hidden">
-                                        {comment.images.slice(0, 9).map((img: string, imgIndex: number) => (
-                                          <div key={imgIndex} className="aspect-square bg-slate-100 rounded overflow-hidden">
-                                            <img 
-                                              src={getImageProxyUrl(img)} 
-                                              alt="" 
-                                              className="w-full h-full object-cover"
-                                              onError={(e) => {
-                                                const target = e.target as HTMLImageElement;
-                                                target.style.display = 'none';
-                                              }}
-                                            />
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  <div className="flex items-center gap-4 text-slate-400 pt-2 border-t border-slate-100">
-                                    <div className="flex items-center gap-1 hover:text-red-500 transition-colors">
-                                      <Share2 size={11} />
-                                      <span className="text-[9px] font-medium">
-                                        {comment.stats?.reposts > 0 ? (comment.stats.reposts > 1000 ? `${(comment.stats.reposts / 1000).toFixed(1)}k` : comment.stats.reposts) : ''}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-1 hover:text-blue-500 transition-colors">
-                                      <MessageSquare size={11} />
-                                      <span className="text-[9px] font-medium">
-                                        {comment.stats?.comments > 0 ? (comment.stats.comments > 1000 ? `${(comment.stats.comments / 1000).toFixed(1)}k` : comment.stats.comments) : ''}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-1 hover:text-red-500 transition-colors">
-                                      <Heart size={11} />
-                                      <span className="text-[9px] font-medium">
-                                        {comment.stats?.likes > 0 ? (comment.stats.likes > 1000 ? `${(comment.stats.likes / 1000).toFixed(1)}k` : comment.stats.likes) : ''}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* 垂直分隔线 */}
-                      <div className="absolute left-1/2 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-slate-300/60 to-transparent transform -translate-x-1/2 z-10"></div>
-                      
-                      {/* 小红书热评 */}
-                      <div className="flex flex-col gap-3 pl-4 relative">
-                        <div className="flex items-center gap-2 mb-1 pb-2 border-b border-slate-200/40">
-                          <div className="w-7 h-7 bg-[#FF2442] rounded-lg flex items-center justify-center text-white shadow-md">
-                            <Zap size={14} />
-                          </div>
-                          <div>
-                            <h4 className="text-xs font-black text-slate-800">小红书热评</h4>
-                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Visuals</p>
-                          </div>
-                        </div>
-
-                        {webSeriesXiaohongshuLoading ? (
-                          <div className="flex items-center justify-center py-8">
-                            <Loader2 className="animate-spin text-rose-600" size={20} />
-                          </div>
-                        ) : webSeriesXiaohongshuComments.length === 0 ? (
-                          <div className="text-center py-8 text-slate-400 text-xs">暂无小红书数据</div>
-                        ) : (
-                          <div className="h-full">
-                            <Masonry
-                              breakpointCols={{
-                                default: 3,
-                                1200: 3,
-                                992: 3,
-                                768: 2,
-                                576: 2
-                              }}
-                              className="masonry-grid"
-                              columnClassName="masonry-grid_column"
-                            >
-                              {webSeriesXiaohongshuComments
-                                .filter(item => item.cover && item.cover.trim() !== '')
-                                .map((item, i) => {
-                                const coverUrl = item.cover || '';
-                                const imageUrl = getImageProxyUrl(coverUrl);
-                                
-                                return (
-                                  <div
-                                    key={item.id || `xhs-${i}`}
-                                    onClick={() => {
-                                      setSelectedXiaohongshuItem(item);
-                                      setShowXiaohongshuModal(true);
-                                    }}
-                                    className="group flex flex-col rounded-lg overflow-hidden bg-slate-200 border border-slate-100 shadow-sm hover:shadow-md transition-all mb-2 cursor-pointer"
-                                  >
-                                    <div className="relative w-full">
-                                      {imageUrl ? (
-                                        <img
-                                          src={imageUrl}
-                                          alt={item.title}
-                                          className="w-full h-auto object-cover group-hover:scale-105 transition-transform duration-300"
-                                          onError={(e) => {
-                                            const target = e.target as HTMLImageElement;
-                                            target.style.display = 'none';
-                                          }}
-                                        />
-                                      ) : (
-                                        <div className="w-full h-full bg-gradient-to-br from-pink-50 to-rose-50 flex items-center justify-center">
-                                          <Zap size={16} className="text-rose-300" />
-                                        </div>
-                                      )}
-                                      {item.type === 'video' && (
-                                        <div className="absolute top-0.5 right-0.5 w-3 h-3 bg-black/60 rounded flex items-center justify-center">
-                                          <Play size={8} className="text-white" fill="white" />
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div className="p-2 bg-white">
-                                      <p className="text-[11px] text-slate-700 font-medium line-clamp-2 mb-1">
-                                        {item.title}
-                                      </p>
-                                      <div className="flex items-center gap-2 text-[8px] text-slate-400">
-                                        {item.stats?.likes > 0 && (
-                                          <span>❤️ {item.stats.likes >= 1000 ? `${(item.stats.likes / 1000).toFixed(1)}k` : item.stats.likes}</span>
-                                        )}
-                                        {item.stats?.comments > 0 && (
-                                          <span>💬 {item.stats.comments >= 1000 ? `${(item.stats.comments / 1000).toFixed(1)}k` : item.stats.comments}</span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </Masonry>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                  <SocialCommentsSection
+                    weiboComments={webSeriesWeiboComments}
+                    weiboLoading={webSeriesWeiboLoading}
+                    xiaohongshuComments={webSeriesXiaohongshuComments}
+                    xiaohongshuLoading={webSeriesXiaohongshuLoading}
+                    onXiaohongshuClick={(item) => {
+                      setSelectedXiaohongshuItem(item);
+                      setShowXiaohongshuModal(true);
+                    }}
+                  />
                 </div>
               ) : selectedWebSeries ? (
                 <div className="flex-1 flex flex-col items-center justify-center relative z-10">
@@ -2183,6 +1061,84 @@ const HotDramaView: React.FC = () => {
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center relative z-10">
                   <Tv size={64} className="text-slate-200 mb-4" />
+                  <p className="text-slate-400 font-bold text-sm">暂无数据</p>
+                </div>
+              )}
+            </div>
+                          </div>
+                        )}
+                        
+        {/* 综艺节目 Tab */}
+        {mainTab === 'variety' && (
+          <div className="flex-1 flex gap-4 overflow-hidden">
+            {/* 左侧：综艺节目排行列表 (1/4) */}
+            <RankingList
+              ref={scrollContainerRef}
+              items={varietyList.map(v => ({ ...v, id: v.seriesId }))}
+              loading={varietyLoading}
+              selectedId={selectedVariety?.seriesId || null}
+              onSelect={(item) => {
+                const variety = varietyList.find(v => v.seriesId === item.id);
+                if (variety) setSelectedVariety(variety);
+              }}
+              type="variety"
+              title="综艺节目排行"
+            />
+
+            {/* 右侧：综艺节目详情 (3/4) */}
+            <div className="w-3/4 flex flex-col bg-white/40 backdrop-blur-md rounded-md border border-white/60 overflow-hidden relative">
+              {/* 背景装饰元素 */}
+              <div className="absolute top-0 right-0 w-64 h-64 bg-rose-500/5 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none"></div>
+              <div className="absolute bottom-0 left-0 w-48 h-48 bg-blue-500/5 rounded-full blur-3xl -ml-24 -mb-24 pointer-events-none"></div>
+
+              {varietyDetailLoading ? (
+                <div className="flex-1 flex flex-col items-center justify-center relative z-10">
+                  <Loader2 className="animate-spin text-rose-600" size={32} />
+                  <p className="text-slate-400 font-bold text-sm mt-4 uppercase tracking-widest">正在探索综艺奥秘...</p>
+                </div>
+              ) : varietyDetail ? (
+                <div ref={detailScrollRef} className="flex-1 flex flex-col overflow-y-auto custom-scrollbar relative z-10">
+                  {/* 综艺节目头部信息 */}
+                  <DetailHeader
+                    name={varietyDetail.name}
+                    imgUrl={varietyDetail.imgUrl}
+                    releaseInfo={varietyDetail.releaseInfo || varietyDetail.platformDesc || ''}
+                    category={varietyDetail.category}
+                    platformDesc={varietyDetail.platformDesc}
+                    type="variety"
+                    metrics={getWebSeriesMetrics(varietyDetail, selectedVariety)}
+                    trends={getWebSeriesTrends(varietyDetail)}
+                    trendLabel="近日趋势"
+                    trendGradientId="varietyTrendGradient"
+                    rightBottomContent={
+                      <BilibiliVideoList
+                        videos={varietyBilibiliComments}
+                        loading={varietyBilibiliLoading}
+                        title="B站影视解说"
+                      />
+                    }
+                  />
+
+                  {/* 社交热评 */}
+                  <SocialCommentsSection
+                    weiboComments={varietyWeiboComments}
+                    weiboLoading={varietyWeiboLoading}
+                    xiaohongshuComments={varietyXiaohongshuComments}
+                    xiaohongshuLoading={varietyXiaohongshuLoading}
+                    onXiaohongshuClick={(item) => {
+                      setSelectedXiaohongshuItem(item);
+                      setShowXiaohongshuModal(true);
+                    }}
+                  />
+                </div>
+              ) : selectedVariety ? (
+                <div className="flex-1 flex flex-col items-center justify-center relative z-10">
+                  <Sparkles size={64} className="text-slate-200 mb-4" />
+                  <p className="text-slate-400 font-bold text-sm">选择左侧综艺查看详情</p>
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center relative z-10">
+                  <Sparkles size={64} className="text-slate-200 mb-4" />
                   <p className="text-slate-400 font-bold text-sm">暂无数据</p>
                 </div>
               )}

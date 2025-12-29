@@ -230,12 +230,13 @@ export async function refreshMaoyanData(): Promise<{ success: boolean; data: { m
     try {
         console.log('[MaoyanScheduler] Starting Maoyan data refresh (movies + web series)...');
 
-        // 并行执行电影和网播热剧的采集
-        const { refreshAndSaveMaoyanData, refreshAndSaveMaoyanWebSeriesData, searchAndSaveMovieDiscussions } = await import('../hotDramaService.js');
+        // 并行执行电影、网播热剧和综艺的采集
+        const { refreshAndSaveMaoyanData, refreshAndSaveMaoyanWebSeriesData, refreshAndSaveMaoyanVarietyData, searchAndSaveMovieDiscussions } = await import('../hotDramaService.js');
         
-        const [movieResult, webSeriesResult] = await Promise.all([
+        const [movieResult, webSeriesResult, varietyResult] = await Promise.all([
             refreshAndSaveMaoyanData(),
-            refreshAndSaveMaoyanWebSeriesData()
+            refreshAndSaveMaoyanWebSeriesData(),
+            refreshAndSaveMaoyanVarietyData()
         ]);
 
         if (movieResult.success) {
@@ -259,6 +260,18 @@ export async function refreshMaoyanData(): Promise<{ success: boolean; data: { m
             });
         } else {
             console.log('[MaoyanScheduler] Web series refresh failed:', webSeriesResult.error);
+        }
+
+        if (varietyResult.success) {
+            console.log(`[MaoyanScheduler] Successfully refreshed ${varietyResult.total} variety`);
+            
+            // 对每个综艺进行搜索并入库（异步执行，不阻塞）
+            const { searchAndSaveVarietyDiscussions } = await import('../hotDramaService.js');
+            searchAndSaveVarietyDiscussions(varietyResult.series).catch(err => {
+                console.error('[MaoyanScheduler] Error searching variety discussions:', err);
+            });
+        } else {
+            console.log('[MaoyanScheduler] Variety refresh failed:', varietyResult.error);
         }
         
         // 返回电影数据（保持向后兼容）

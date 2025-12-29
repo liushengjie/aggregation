@@ -287,10 +287,21 @@ function initSchema() {
       release_info TEXT,
       category TEXT,
       img_url TEXT,
+      type TEXT DEFAULT 'webSeries' CHECK(type IN ('tv', 'webSeries', 'variety')),
       fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(series_id)
     )
   `);
+  
+  // 如果表已存在但没有type字段，添加type字段
+  try {
+    db.exec(`ALTER TABLE maoyan_web_series_list ADD COLUMN type TEXT DEFAULT 'webSeries' CHECK(type IN ('tv', 'webSeries', 'variety'))`);
+  } catch (error: any) {
+    // 字段已存在，忽略错误
+    if (!error.message.includes('duplicate column name')) {
+      console.warn('[Database] 添加type字段时出现错误（可能已存在）:', error.message);
+    }
+  }
 
   // Create indexes for maoyan tables
   db.exec(`CREATE INDEX IF NOT EXISTS idx_maoyan_calendar_fetched_at ON maoyan_calendar(fetched_at DESC)`);
@@ -1302,23 +1313,34 @@ export const maoyanOps = {
 
   // Web Series List operations
   deleteAllWebSeriesList: db.prepare(`DELETE FROM maoyan_web_series_list`),
+  deleteWebSeriesByType: db.prepare(`DELETE FROM maoyan_web_series_list WHERE type = ?`),
   insertWebSeries: db.prepare(`
     INSERT OR REPLACE INTO maoyan_web_series_list 
-    (series_id, title, curr_heat, curr_heat_desc, platform_desc, release_info, category, img_url, fetched_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (series_id, title, curr_heat, curr_heat_desc, platform_desc, release_info, category, img_url, type, fetched_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `),
   getLatestWebSeriesList: db.prepare(`
     SELECT series_id as seriesId, title, curr_heat as currHeat, curr_heat_desc as currHeatDesc,
            platform_desc as platformDesc, release_info as releaseInfo, category, img_url as imgUrl,
-           fetched_at as fetchedAt
+           type, fetched_at as fetchedAt
     FROM maoyan_web_series_list
+    WHERE type = 'tv' OR type = 'webSeries' OR type IS NULL
+    ORDER BY curr_heat DESC, fetched_at DESC
+    LIMIT 100
+  `),
+  getLatestVarietyList: db.prepare(`
+    SELECT series_id as seriesId, title, curr_heat as currHeat, curr_heat_desc as currHeatDesc,
+           platform_desc as platformDesc, release_info as releaseInfo, category, img_url as imgUrl,
+           type, fetched_at as fetchedAt
+    FROM maoyan_web_series_list
+    WHERE type = 'variety'
     ORDER BY curr_heat DESC, fetched_at DESC
     LIMIT 100
   `),
   getWebSeriesById: db.prepare(`
     SELECT series_id as seriesId, title, curr_heat as currHeat, curr_heat_desc as currHeatDesc,
            platform_desc as platformDesc, release_info as releaseInfo, category, img_url as imgUrl,
-           fetched_at as fetchedAt
+           type, fetched_at as fetchedAt
     FROM maoyan_web_series_list
     WHERE series_id = ?
     ORDER BY fetched_at DESC

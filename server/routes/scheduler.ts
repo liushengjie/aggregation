@@ -367,11 +367,9 @@ router.post('/trigger/:task', requireAuth, async (req, res) => {
             case 'maoyan':
                 const maoyanResult = await refreshMaoyanData();
                 if (maoyanResult.success) {
-                    const total = maoyanResult.data ?
-                        maoyanResult.data.boxOffice.length + maoyanResult.data.calendar.length +
-                        maoyanResult.data.tvRanking.length + maoyanResult.data.webSeriesRanking.length +
-                        maoyanResult.data.varietyRanking.length : 0;
-                    res.json({ success: true, message: `Maoyan refresh triggered. Fetched ${total} items.` });
+                    const total = maoyanResult.data?.total || 0;
+                    const moviesCount = maoyanResult.data?.movies?.length || 0;
+                    res.json({ success: true, message: `Maoyan refresh triggered. Fetched ${total} movies.` });
                 } else {
                     res.status(500).json({ success: false, error: maoyanResult.error || 'Failed to refresh' });
                 }

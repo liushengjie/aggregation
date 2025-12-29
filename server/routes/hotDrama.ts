@@ -1,8 +1,8 @@
 import express from 'express';
 import { hotDramaOps, maoyanOps, type MaoyanMovie, searchOps } from '../services/database.js';
 import { refreshHotDramaData } from '../services/schedulers/hotDramaSchedulerService.js';
-import { scrapeMaoyanMovieList, scrapeMaoyanMovieDetail, scrapeMaoyanWebSeriesList, scrapeMaoyanWebSeriesDetail } from '../services/scrapers/hotDrama/maoyanScraper.js';
-import { getMaoyanMovieList, getMaoyanWebSeriesList } from '../services/hotDramaService.js';
+import { scrapeMaoyanMovieList, scrapeMaoyanMovieDetail, scrapeMaoyanWebSeriesList, scrapeMaoyanWebSeriesDetail, scrapeMaoyanVarietyList } from '../services/scrapers/hotDrama/maoyanScraper.js';
+import { getMaoyanMovieList, getMaoyanWebSeriesList, getMaoyanVarietyList } from '../services/hotDramaService.js';
 
 const router = express.Router();
 
@@ -1083,6 +1083,454 @@ maoyanRouter.get('/web-series/weibo-comments', async (req, res) => {
     });
   } catch (error: any) {
     console.error('[Maoyan API] 获取网播热剧微博热评错误:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch Weibo comments'
+    });
+  }
+});
+
+/**
+ * 获取综艺节目列表 - 通过服务层获取
+ * GET /variety-list
+ */
+maoyanRouter.get('/variety-list', async (req, res) => {
+  try {
+    const forceRefresh = req.query.forceRefresh === 'true' || req.query.refresh === 'true';
+  
+    const variety = await getMaoyanVarietyList(forceRefresh);
+
+    res.json({
+      success: true,
+      data: {
+        total: variety.length,
+        items: variety,
+        fetchedAt: variety.length > 0 ? variety[0].fetchedAt : new Date().toISOString()
+      }
+    });
+  } catch (error: any) {
+    console.error('[Maoyan API] 获取综艺节目列表错误:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * 获取综艺节目明细
+ * GET /variety-detail
+ */
+maoyanRouter.get('/variety-detail', async (req, res) => {
+  try {
+    const seriesId = req.query.seriesId as string;
+    const showDate = req.query.showDate as string | undefined;
+
+    if (!seriesId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameter: seriesId'
+      });
+    }
+
+    console.log(`[Maoyan API] 获取综艺节目明细: seriesId=${seriesId}, showDate=${showDate || 'today'}`);
+    const detail = await scrapeMaoyanWebSeriesDetail(seriesId, showDate);
+
+    if (detail) {
+      res.json({
+        success: true,
+        data: detail
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        error: 'Variety detail not found'
+      });
+    }
+  } catch (error: any) {
+    console.error('[Maoyan API] 获取综艺节目明细错误:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * 获取综艺节目的B站解说
+ * GET /variety/bilibili-comments?seriesId=xxx&limit=20
+ */
+maoyanRouter.get('/variety/bilibili-comments', async (req, res) => {
+  try {
+    const seriesId = req.query.seriesId as string;
+    const limit = parseInt(req.query.limit as string) || 20;
+
+    if (!seriesId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameter: seriesId'
+      });
+    }
+
+    console.log(`[Maoyan API] 获取综艺节目B站解说: seriesId=${seriesId}, limit=${limit}`);
+    
+    const varietyInfo = maoyanOps.getWebSeriesById.get(seriesId) as { title?: string } | undefined;
+    const varietyTitle = varietyInfo?.title || '';
+
+    const results = searchOps.getBilibiliSearchBySeriesId.all(seriesId, limit * 2) as Array<{
+      id: number;
+      search_keyword: string;
+      search_page: number;
+      result_id: string;
+      title: string;
+      desc: string | null;
+      author_name: string | null;
+      author_mid: string | null;
+      author_avatar: string | null;
+      author_profile_url: string | null;
+      cover: string | null;
+      duration: string | null;
+      publish_time: string | null;
+      url: string;
+      type: string;
+      stats_views: number;
+      stats_danmaku: number;
+      stats_likes: number;
+      stats_coins: number;
+      stats_favorites: number;
+      stats_shares: number;
+      stats_replies: number;
+      tags: string | null;
+      bvid: string | null;
+      aid: string | null;
+      fetched_at: string;
+    }>;
+
+    const calculateRelevanceScore = (videoTitle: string, varietyTitle: string): number => {
+      if (!varietyTitle) return 0;
+      const varietyTitleLower = varietyTitle.toLowerCase();
+      const videoTitleLower = videoTitle.toLowerCase();
+      let score = 0;
+      if (videoTitleLower.includes(varietyTitleLower)) {
+        score += 100;
+      }
+      const varietyWords = varietyTitleLower.split(/[\s\-_]+/).filter(w => w.length > 1);
+      varietyWords.forEach(word => {
+        if (videoTitleLower.includes(word)) {
+          score += word.length * 5;
+        }
+      });
+      const varietyNumbers = varietyTitle.match(/\d+/g);
+      if (varietyNumbers) {
+        varietyNumbers.forEach(num => {
+          if (videoTitleLower.includes(num)) {
+            score += 10;
+          }
+        });
+      }
+      return score;
+    };
+
+    const formattedResults = results
+      .map(item => ({
+        id: item.result_id,
+        title: item.title,
+        desc: item.desc,
+        author: {
+          name: item.author_name,
+          mid: item.author_mid,
+          avatar: item.author_avatar,
+          profileUrl: item.author_profile_url
+        },
+        cover: item.cover,
+        duration: item.duration,
+        publishTime: item.publish_time,
+        url: item.url,
+        type: item.type,
+        stats: {
+          views: item.stats_views,
+          danmaku: item.stats_danmaku,
+          likes: item.stats_likes,
+          coins: item.stats_coins,
+          favorites: item.stats_favorites,
+          shares: item.stats_shares,
+          replies: item.stats_replies
+        },
+        tags: item.tags ? JSON.parse(item.tags) : null,
+        bvid: item.bvid,
+        aid: item.aid,
+        relevanceScore: calculateRelevanceScore(item.title, varietyTitle)
+      }))
+      .sort((a, b) => {
+        if (b.relevanceScore !== a.relevanceScore) {
+          return b.relevanceScore - a.relevanceScore;
+        }
+        return b.stats.views - a.stats.views;
+      })
+      .slice(0, limit)
+      .map(({ relevanceScore, ...item }) => item);
+
+    res.json({
+      success: true,
+      data: {
+        total: formattedResults.length,
+        items: formattedResults
+      }
+    });
+  } catch (error: any) {
+    console.error('[Maoyan API] 获取综艺节目B站解说错误:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch Bilibili comments'
+    });
+  }
+});
+
+/**
+ * 获取综艺节目的小红书讨论
+ * GET /variety/xiaohongshu-comments?seriesId=xxx&limit=20
+ */
+maoyanRouter.get('/variety/xiaohongshu-comments', async (req, res) => {
+  try {
+    const seriesId = req.query.seriesId as string;
+    const limit = parseInt(req.query.limit as string) || 20;
+
+    if (!seriesId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameter: seriesId'
+      });
+    }
+
+    console.log(`[Maoyan API] 获取综艺节目小红书讨论: seriesId=${seriesId}, limit=${limit}`);
+    
+    const varietyInfo = maoyanOps.getWebSeriesById.get(seriesId) as { title?: string } | undefined;
+    const varietyTitle = varietyInfo?.title || '';
+
+    const results = searchOps.getXiaohongshuSearchBySeriesId.all(seriesId, limit * 2) as Array<{
+      id: number;
+      search_keyword: string;
+      search_page: number;
+      result_id: string;
+      title: string;
+      desc: string | null;
+      author_name: string | null;
+      author_avatar: string | null;
+      author_user_id: string | null;
+      cover: string | null;
+      stats_likes: number;
+      stats_comments: number;
+      stats_collects: number;
+      type: string;
+      url: string;
+      fetched_at: string;
+    }>;
+
+    const calculateRelevanceScore = (noteTitle: string, varietyTitle: string): number => {
+      if (!varietyTitle) return 0;
+      const varietyTitleLower = varietyTitle.toLowerCase();
+      const noteTitleLower = noteTitle.toLowerCase();
+      let score = 0;
+      if (noteTitleLower.includes(varietyTitleLower)) {
+        score += 100;
+      }
+      const varietyWords = varietyTitleLower.split(/[\s\-_]+/).filter(w => w.length > 1);
+      varietyWords.forEach(word => {
+        if (noteTitleLower.includes(word)) {
+          score += word.length * 5;
+        }
+      });
+      const varietyNumbers = varietyTitle.match(/\d+/g);
+      if (varietyNumbers) {
+        varietyNumbers.forEach(num => {
+          if (noteTitleLower.includes(num)) {
+            score += 10;
+          }
+        });
+      }
+      return score;
+    };
+
+    const formattedResults = results
+      .map(item => ({
+        id: item.result_id,
+        title: item.title,
+        desc: item.desc,
+        author: {
+          name: item.author_name || '',
+          avatar: item.author_avatar,
+          userId: item.author_user_id
+        },
+        cover: item.cover,
+        stats: {
+          likes: item.stats_likes,
+          comments: item.stats_comments,
+          collects: item.stats_collects
+        },
+        type: item.type as 'normal' | 'video',
+        url: item.url,
+        relevanceScore: calculateRelevanceScore(item.title, varietyTitle)
+      }))
+      .sort((a, b) => {
+        if (b.relevanceScore !== a.relevanceScore) {
+          return b.relevanceScore - a.relevanceScore;
+        }
+        return b.stats.likes - a.stats.likes;
+      })
+      .slice(0, limit)
+      .map(({ relevanceScore, ...item }) => item);
+
+    res.json({
+      success: true,
+      data: {
+        total: formattedResults.length,
+        items: formattedResults
+      }
+    });
+  } catch (error: any) {
+    console.error('[Maoyan API] 获取综艺节目小红书讨论错误:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * 获取综艺节目的微博热评
+ * GET /variety/weibo-comments?seriesId=xxx&limit=20
+ */
+maoyanRouter.get('/variety/weibo-comments', async (req, res) => {
+  try {
+    const seriesId = req.query.seriesId as string;
+    const limit = parseInt(req.query.limit as string) || 20;
+
+    if (!seriesId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameter: seriesId'
+      });
+    }
+
+    console.log(`[Maoyan API] 获取综艺节目微博热评: seriesId=${seriesId}, limit=${limit}`);
+    
+    const varietyInfo = maoyanOps.getWebSeriesById.get(seriesId) as { title?: string } | undefined;
+    const varietyTitle = varietyInfo?.title || '';
+
+    const results = searchOps.getWeiboSearchBySeriesId.all(seriesId, limit * 2) as Array<{
+      id: number;
+      search_keyword: string;
+      search_page: number;
+      result_id: string;
+      text: string;
+      author_name: string | null;
+      author_avatar: string | null;
+      author_profile_url: string | null;
+      publish_time: string | null;
+      publish_from: string | null;
+      url: string;
+      images: string | null;
+      video_cover: string | null;
+      video_url: string | null;
+      video_duration: string | null;
+      stats_reposts: number;
+      stats_comments: number;
+      stats_likes: number;
+      stats_views: number | null;
+      topics: string | null;
+      mentions: string | null;
+      is_repost: number;
+      original_weibo_id: string | null;
+      original_weibo_text: string | null;
+      original_weibo_author: string | null;
+      fetched_at: string;
+    }>;
+
+    const calculateRelevanceScore = (weiboText: string, varietyTitle: string): number => {
+      if (!varietyTitle) return 0;
+      const varietyTitleLower = varietyTitle.toLowerCase();
+      const weiboTextLower = weiboText.toLowerCase();
+      let score = 0;
+      if (weiboTextLower.includes(varietyTitleLower)) {
+        score += 100;
+      }
+      const varietyWords = varietyTitleLower.split(/[\s\-_]+/).filter(w => w.length > 1);
+      varietyWords.forEach(word => {
+        if (weiboTextLower.includes(word)) {
+          score += word.length * 5;
+        }
+      });
+      const varietyNumbers = varietyTitle.match(/\d+/g);
+      if (varietyNumbers) {
+        varietyNumbers.forEach(num => {
+          if (weiboTextLower.includes(num)) {
+            score += 10;
+          }
+        });
+      }
+      const keywords = ['综艺', '节目', '嘉宾', '精彩', '推荐', '好看'];
+      keywords.forEach(keyword => {
+        if (weiboTextLower.includes(keyword)) {
+          score += 5;
+        }
+      });
+      return score;
+    };
+
+    const formattedResults = results
+      .map(item => ({
+        id: item.result_id,
+        text: item.text,
+        author: {
+          name: item.author_name || '微博用户',
+          avatar: item.author_avatar,
+          profileUrl: item.author_profile_url
+        },
+        publishTime: item.publish_time,
+        publishFrom: item.publish_from,
+        url: item.url,
+        images: item.images ? JSON.parse(item.images) : null,
+        video: item.video_url ? {
+          cover: item.video_cover,
+          url: item.video_url,
+          duration: item.video_duration
+        } : null,
+        stats: {
+          reposts: item.stats_reposts,
+          comments: item.stats_comments,
+          likes: item.stats_likes,
+          views: item.stats_views || undefined
+        },
+        topics: item.topics ? JSON.parse(item.topics) : null,
+        mentions: item.mentions ? JSON.parse(item.mentions) : null,
+        isRepost: item.is_repost === 1,
+        originalWeibo: item.original_weibo_id ? {
+          id: item.original_weibo_id,
+          text: item.original_weibo_text,
+          author: item.original_weibo_author
+        } : null,
+        relevanceScore: calculateRelevanceScore(item.text, varietyTitle)
+      }))
+      .sort((a, b) => {
+        if (b.relevanceScore !== a.relevanceScore) {
+          return b.relevanceScore - a.relevanceScore;
+        }
+        const aInteraction = a.stats.likes + a.stats.reposts + a.stats.comments;
+        const bInteraction = b.stats.likes + b.stats.reposts + b.stats.comments;
+        return bInteraction - aInteraction;
+      })
+      .slice(0, limit)
+      .map(({ relevanceScore, ...item }) => item);
+
+    res.json({
+      success: true,
+      data: {
+        total: formattedResults.length,
+        items: formattedResults
+      }
+    });
+  } catch (error: any) {
+    console.error('[Maoyan API] 获取综艺节目微博热评错误:', error);
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to fetch Weibo comments'

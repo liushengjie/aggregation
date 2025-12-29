@@ -9,7 +9,7 @@ import { scrapeXiaohongshuSearch } from './scrapers/search/xiaohongshuSearchScra
 import { scrapeBilibiliSearch } from './scrapers/search/bilibiliSearchScraper.js';
 import { saveBilibiliSearchResults, saveWeiboSearchResults, saveXiaohongshuSearchResults } from './searchService.js';
 import { searchOps, maoyanOps } from './database.js';
-import { scrapeMaoyanWebSeriesList } from './scrapers/hotDrama/maoyanScraper.js';
+import { scrapeMaoyanWebSeriesList, scrapeMaoyanVarietyList } from './scrapers/hotDrama/maoyanScraper.js';
 
 const TMDB_API_KEY = '9d0a3769b77fee44cfbf912cd84e62f1';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
@@ -185,7 +185,6 @@ export const cleanup = async () => { };
 // 猫眼数据服务
 // ============================================
 
-import { maoyanOps } from './database.js';
 import { scrapeMaoyanMovieList } from './scrapers/hotDrama/maoyanScraper.js';
 
 /**
@@ -336,6 +335,50 @@ export async function getMaoyanMovieList(forceRefresh: boolean = true): Promise<
   return loadMaoyanMovieListFromDatabase();
 }
 
+// 频率控制：记录上次请求时间
+let lastWeiboRequestTime: number = 0;
+let lastXiaohongshuRequestTime: number = 0;
+let lastBilibiliRequestTime: number = 0;
+
+// 各平台的最小请求间隔（毫秒）
+const WEIBO_REQUEST_INTERVAL =5000; // 微博：5秒（降低验证码风险）
+const XIAOHONGSHU_REQUEST_INTERVAL = 2000; // 小红书：2秒
+const BILIBILI_REQUEST_INTERVAL = 2000; // B站：2秒
+
+/**
+ * 频率控制：确保请求间隔
+ */
+async function rateLimitWeibo(): Promise<void> {
+    const now = Date.now();
+    const elapsed = now - lastWeiboRequestTime;
+    if (elapsed < WEIBO_REQUEST_INTERVAL) {
+        const waitTime = WEIBO_REQUEST_INTERVAL - elapsed;
+        console.log(`[MaoyanService] 微博请求限速：等待 ${waitTime}ms`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    lastWeiboRequestTime = Date.now();
+}
+
+async function rateLimitXiaohongshu(): Promise<void> {
+    const now = Date.now();
+    const elapsed = now - lastXiaohongshuRequestTime;
+    if (elapsed < XIAOHONGSHU_REQUEST_INTERVAL) {
+        const waitTime = XIAOHONGSHU_REQUEST_INTERVAL - elapsed;
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    lastXiaohongshuRequestTime = Date.now();
+}
+
+async function rateLimitBilibili(): Promise<void> {
+    const now = Date.now();
+    const elapsed = now - lastBilibiliRequestTime;
+    if (elapsed < BILIBILI_REQUEST_INTERVAL) {
+        const waitTime = BILIBILI_REQUEST_INTERVAL - elapsed;
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    lastBilibiliRequestTime = Date.now();
+}
+
 /**
  * 搜索并保存电影相关的讨论
  */
@@ -355,6 +398,8 @@ export async function searchAndSaveMovieDiscussions(movies: MaoyanMovieItem[]): 
             // 1. 微博搜索（电影名称）
             if (hasWeibo === 0) {
                 try {
+                    // 调用侧频率控制
+                    await rateLimitWeibo();
                     console.log(`[MaoyanService] Searching Weibo for: ${movieTitle}`);
                     const weiboResult = await scrapeWeiboSearch(movieTitle, { page: 1, limit: 20 });
                     if (weiboResult.results.length > 0) {
@@ -369,8 +414,6 @@ export async function searchAndSaveMovieDiscussions(movies: MaoyanMovieItem[]): 
                         );
                         console.log(`[MaoyanService] Saved ${weiboResult.results.length} Weibo results for ${movieTitle}`);
                     }
-                    // 添加延迟避免请求过快
-                    await new Promise(resolve => setTimeout(resolve, 1000));
                 } catch (error: any) {
                     console.error(`[MaoyanService] Error searching Weibo for ${movieTitle}: ${error.message}`);
                 }
@@ -381,6 +424,8 @@ export async function searchAndSaveMovieDiscussions(movies: MaoyanMovieItem[]): 
             // 2. 小红书搜索（电影名称）
             if (hasXiaohongshu === 0) {
                 try {
+                    // 调用侧频率控制
+                    await rateLimitXiaohongshu();
                     console.log(`[MaoyanService] Searching Xiaohongshu for: ${movieTitle}`);
                     const xhsResult = await scrapeXiaohongshuSearch(movieTitle, { page: 1, limit: 20 });
                     if (xhsResult.results.length > 0) {
@@ -395,8 +440,6 @@ export async function searchAndSaveMovieDiscussions(movies: MaoyanMovieItem[]): 
                         );
                         console.log(`[MaoyanService] Saved ${xhsResult.results.length} Xiaohongshu results for ${movieTitle}`);
                     }
-                    // 添加延迟避免请求过快
-                    await new Promise(resolve => setTimeout(resolve, 1000));
                 } catch (error: any) {
                     console.error(`[MaoyanService] Error searching Xiaohongshu for ${movieTitle}: ${error.message}`);
                 }
@@ -407,6 +450,8 @@ export async function searchAndSaveMovieDiscussions(movies: MaoyanMovieItem[]): 
             // 3. B站搜索（电影名称 + "解说"）
             if (hasBilibili === 0) {
                 try {
+                    // 调用侧频率控制
+                    await rateLimitBilibili();
                     const bilibiliKeyword = `${movieTitle} 解说`;
                     console.log(`[MaoyanService] Searching Bilibili for: ${bilibiliKeyword}`);
                     const biliResult = await scrapeBilibiliSearch(bilibiliKeyword, { page: 1, limit: 20, searchType: 'video' });
@@ -422,8 +467,6 @@ export async function searchAndSaveMovieDiscussions(movies: MaoyanMovieItem[]): 
                         );
                         console.log(`[MaoyanService] Saved ${biliResult.results.length} Bilibili results for ${bilibiliKeyword}`);
                     }
-                    // 添加延迟避免请求过快
-                    await new Promise(resolve => setTimeout(resolve, 1000));
                 } catch (error: any) {
                     console.error(`[MaoyanService] Error searching Bilibili for ${movieTitle}: ${error.message}`);
                 }
@@ -458,6 +501,8 @@ export async function searchAndSaveWebSeriesDiscussions(series: MaoyanWebSeriesI
             // 1. 微博搜索（剧集名称）
             if (hasWeibo === 0) {
                 try {
+                    // 调用侧频率控制
+                    await rateLimitWeibo();
                     console.log(`[MaoyanService] Searching Weibo for web series: ${seriesTitle}`);
                     const weiboResult = await scrapeWeiboSearch(seriesTitle, { page: 1, limit: 20 });
                     if (weiboResult.results.length > 0) {
@@ -472,7 +517,6 @@ export async function searchAndSaveWebSeriesDiscussions(series: MaoyanWebSeriesI
                         );
                         console.log(`[MaoyanService] Saved ${weiboResult.results.length} Weibo results for ${seriesTitle}`);
                     }
-                    await new Promise(resolve => setTimeout(resolve, 1000));
                 } catch (error: any) {
                     console.error(`[MaoyanService] Error searching Weibo for ${seriesTitle}: ${error.message}`);
                 }
@@ -483,6 +527,8 @@ export async function searchAndSaveWebSeriesDiscussions(series: MaoyanWebSeriesI
             // 2. 小红书搜索（剧集名称）
             if (hasXiaohongshu === 0) {
                 try {
+                    // 调用侧频率控制
+                    await rateLimitXiaohongshu();
                     console.log(`[MaoyanService] Searching Xiaohongshu for web series: ${seriesTitle}`);
                     const xhsResult = await scrapeXiaohongshuSearch(seriesTitle, { page: 1, limit: 20 });
                     if (xhsResult.results.length > 0) {
@@ -497,7 +543,6 @@ export async function searchAndSaveWebSeriesDiscussions(series: MaoyanWebSeriesI
                         );
                         console.log(`[MaoyanService] Saved ${xhsResult.results.length} Xiaohongshu results for ${seriesTitle}`);
                     }
-                    await new Promise(resolve => setTimeout(resolve, 1000));
                 } catch (error: any) {
                     console.error(`[MaoyanService] Error searching Xiaohongshu for ${seriesTitle}: ${error.message}`);
                 }
@@ -508,6 +553,8 @@ export async function searchAndSaveWebSeriesDiscussions(series: MaoyanWebSeriesI
             // 3. B站搜索（剧集名称）
             if (hasBilibili === 0) {
                 try {
+                    // 调用侧频率控制
+                    await rateLimitBilibili();
                     console.log(`[MaoyanService] Searching Bilibili for web series: ${seriesTitle}`);
                     const biliResult = await scrapeBilibiliSearch(seriesTitle, { page: 1, limit: 20, searchType: 'video' });
                     if (biliResult.results.length > 0) {
@@ -522,7 +569,6 @@ export async function searchAndSaveWebSeriesDiscussions(series: MaoyanWebSeriesI
                         );
                         console.log(`[MaoyanService] Saved ${biliResult.results.length} Bilibili results for ${seriesTitle}`);
                     }
-                    await new Promise(resolve => setTimeout(resolve, 1000));
                 } catch (error: any) {
                     console.error(`[MaoyanService] Error searching Bilibili for ${seriesTitle}: ${error.message}`);
                 }
@@ -563,6 +609,7 @@ export async function saveMaoyanWebSeriesToDatabase(series: MaoyanWebSeriesItem[
         item.releaseInfo || null,
         item.category || null,
         item.imgUrl || null,
+        item.type || 'webSeries',
         fetchedAt
       );
     }
@@ -644,6 +691,7 @@ function loadMaoyanWebSeriesListFromDatabase(): MaoyanWebSeriesItem[] {
       releaseInfo: row.releaseInfo || '',
       category: row.category || undefined,
       imgUrl: row.imgUrl || undefined,
+      type: ((row as any).type || 'webSeries') as 'tv' | 'webSeries' | 'variety',
       fetchedAt: row.fetchedAt,
     }));
   } catch (error: any) {
@@ -664,4 +712,237 @@ export async function getMaoyanWebSeriesList(forceRefresh: boolean = false): Pro
 
   // 直接从数据库读取
   return loadMaoyanWebSeriesListFromDatabase();
+}
+
+/**
+ * 保存综艺节目列表到数据库
+ */
+export async function saveMaoyanVarietyToDatabase(variety: MaoyanWebSeriesItem[]): Promise<number> {
+  try {
+    if (variety.length === 0) {
+      console.log('[MaoyanService] No variety to save');
+      return 0;
+    }
+
+    // 先删除所有综艺旧数据
+    maoyanOps.deleteWebSeriesByType.run('variety');
+
+    // 保存新数据到数据库
+    const fetchedAt = new Date().toISOString();
+    for (const item of variety) {
+      maoyanOps.insertWebSeries.run(
+        item.seriesId,
+        item.title,
+        item.currHeat || null,
+        item.currHeatDesc || null,
+        item.platformDesc || null,
+        item.releaseInfo || null,
+        item.category || null,
+        item.imgUrl || null,
+        'variety',
+        fetchedAt
+      );
+    }
+
+    console.log(`[MaoyanService] Successfully saved ${variety.length} variety to database`);
+    return variety.length;
+  } catch (error: any) {
+    console.error('[MaoyanService] Error saving variety to database:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * 刷新综艺节目数据:抓取并保存到数据库
+ */
+export async function refreshAndSaveMaoyanVarietyData(): Promise<{
+  success: boolean;
+  total: number;
+  series: MaoyanWebSeriesItem[];
+  error?: string;
+}> {
+  try {
+    console.log('[MaoyanService] Starting Maoyan variety data refresh...');
+
+    // 调用爬虫抓取数据
+    const result = await scrapeMaoyanVarietyList();
+
+    if (result.series.length > 0) {
+      // 保存到数据库
+      await saveMaoyanVarietyToDatabase(result.series);
+
+      return {
+        success: true,
+        total: result.total,
+        series: result.series
+      };
+    } else {
+      return {
+        success: false,
+        total: 0,
+        series: [],
+        error: 'No variety fetched'
+      };
+    }
+  } catch (error: any) {
+    console.error('[MaoyanService] Error refreshing Maoyan variety data:', error.message);
+    return {
+      success: false,
+      total: 0,
+      series: [],
+      error: error.message
+    };
+  }
+}
+
+/**
+ * 从数据库加载综艺节目列表数据
+ */
+function loadMaoyanVarietyListFromDatabase(): MaoyanWebSeriesItem[] {
+  try {
+    const rows = maoyanOps.getLatestVarietyList.all() as Array<{
+      seriesId: string;
+      title: string;
+      currHeat: number | null;
+      currHeatDesc: string | null;
+      platformDesc: string | null;
+      releaseInfo: string | null;
+      category: string | null;
+      imgUrl: string | null;
+      type: string | null;
+      fetchedAt: string;
+    }>;
+
+    return rows.map(row => ({
+      seriesId: row.seriesId,
+      title: row.title,
+      currHeat: row.currHeat ?? 0,
+      currHeatDesc: row.currHeatDesc || '',
+      platformDesc: row.platformDesc || '',
+      releaseInfo: row.releaseInfo || '',
+      category: row.category || undefined,
+      imgUrl: row.imgUrl || undefined,
+      type: (row.type || 'variety') as 'tv' | 'webSeries' | 'variety',
+      fetchedAt: row.fetchedAt,
+    }));
+  } catch (error: any) {
+    console.error('[MaoyanService] Error loading variety list from database:', error.message);
+    return [];
+  }
+}
+
+/**
+ * 获取综艺节目列表（直接从数据库读取）
+ */
+export async function getMaoyanVarietyList(forceRefresh: boolean = false): Promise<MaoyanWebSeriesItem[]> {
+  // 如果强制刷新，触发抓取
+  if (forceRefresh) {
+    console.log('[MaoyanService] Force refresh requested for variety, triggering scrape...');
+    await refreshAndSaveMaoyanVarietyData();
+  }
+
+  // 直接从数据库读取
+  return loadMaoyanVarietyListFromDatabase();
+}
+
+/**
+ * 搜索并保存综艺节目相关的讨论
+ */
+export async function searchAndSaveVarietyDiscussions(variety: MaoyanWebSeriesItem[]): Promise<void> {
+    console.log(`[MaoyanService] Starting to search discussions for ${variety.length} variety...`);
+    
+    for (const item of variety) {
+        const seriesId = item.seriesId;
+        const varietyTitle = item.title;
+        
+        try {
+            // 检查是否已有搜索结果
+            const hasWeibo = (searchOps.hasSeriesSearchResults.get(seriesId, 'weibo') as { count: number })?.count || 0;
+            const hasXiaohongshu = (searchOps.hasSeriesSearchResults.get(seriesId, 'xiaohongshu') as { count: number })?.count || 0;
+            const hasBilibili = (searchOps.hasSeriesSearchResults.get(seriesId, 'bilibili') as { count: number })?.count || 0;
+            
+            // 1. 微博搜索（综艺名称）
+            if (hasWeibo === 0) {
+                try {
+                    // 调用侧频率控制
+                    await rateLimitWeibo();
+                    console.log(`[MaoyanService] Searching Weibo for variety: ${varietyTitle}`);
+                    const weiboResult = await scrapeWeiboSearch(varietyTitle, { page: 1, limit: 20 });
+                    if (weiboResult.results.length > 0) {
+                        await saveWeiboSearchResults(varietyTitle, 1, weiboResult.results);
+                        searchOps.insertSeriesSearchRelation.run(
+                            seriesId,
+                            varietyTitle,
+                            'weibo',
+                            varietyTitle,
+                            'variety',
+                            weiboResult.results.length
+                        );
+                        console.log(`[MaoyanService] Saved ${weiboResult.results.length} Weibo results for ${varietyTitle}`);
+                    }
+                } catch (error: any) {
+                    console.error(`[MaoyanService] Error searching Weibo for ${varietyTitle}: ${error.message}`);
+                }
+            } else {
+                console.log(`[MaoyanService] Skipping Weibo search for ${varietyTitle} (already exists)`);
+            }
+            
+            // 2. 小红书搜索（综艺名称）
+            if (hasXiaohongshu === 0) {
+                try {
+                    // 调用侧频率控制
+                    await rateLimitXiaohongshu();
+                    console.log(`[MaoyanService] Searching Xiaohongshu for variety: ${varietyTitle}`);
+                    const xhsResult = await scrapeXiaohongshuSearch(varietyTitle, { page: 1, limit: 20 });
+                    if (xhsResult.results.length > 0) {
+                        await saveXiaohongshuSearchResults(varietyTitle, 1, xhsResult.results);
+                        searchOps.insertSeriesSearchRelation.run(
+                            seriesId,
+                            varietyTitle,
+                            'xiaohongshu',
+                            varietyTitle,
+                            'variety',
+                            xhsResult.results.length
+                        );
+                        console.log(`[MaoyanService] Saved ${xhsResult.results.length} Xiaohongshu results for ${varietyTitle}`);
+                    }
+                } catch (error: any) {
+                    console.error(`[MaoyanService] Error searching Xiaohongshu for ${varietyTitle}: ${error.message}`);
+                }
+            } else {
+                console.log(`[MaoyanService] Skipping Xiaohongshu search for ${varietyTitle} (already exists)`);
+            }
+            
+            // 3. B站搜索（综艺名称）
+            if (hasBilibili === 0) {
+                try {
+                    // 调用侧频率控制
+                    await rateLimitBilibili();
+                    console.log(`[MaoyanService] Searching Bilibili for variety: ${varietyTitle}`);
+                    const biliResult = await scrapeBilibiliSearch(varietyTitle, { page: 1, limit: 20, searchType: 'video' });
+                    if (biliResult.results.length > 0) {
+                        await saveBilibiliSearchResults(varietyTitle, 1, biliResult.results);
+                        searchOps.insertSeriesSearchRelation.run(
+                            seriesId,
+                            varietyTitle,
+                            'bilibili',
+                            varietyTitle,
+                            'variety',
+                            biliResult.results.length
+                        );
+                        console.log(`[MaoyanService] Saved ${biliResult.results.length} Bilibili results for ${varietyTitle}`);
+                    }
+                } catch (error: any) {
+                    console.error(`[MaoyanService] Error searching Bilibili for ${varietyTitle}: ${error.message}`);
+                }
+            } else {
+                console.log(`[MaoyanService] Skipping Bilibili search for ${varietyTitle} (already exists)`);
+            }
+            
+        } catch (error: any) {
+            console.error(`[MaoyanService] Error processing variety ${varietyTitle}: ${error.message}`);
+        }
+    }
+    
+    console.log(`[MaoyanService] Finished searching discussions for all variety`);
 }

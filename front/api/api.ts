@@ -273,6 +273,41 @@ export const maoyanApi = {
         if (limit) params.append('limit', limit.toString());
         return fetchApi(`/hot-drama/maoyan/web-series/weibo-comments?${params.toString()}`);
     },
+
+    // 获取综艺节目列表
+    getVarietyList: (forceRefresh?: boolean) => {
+        const params = new URLSearchParams();
+        if (forceRefresh) params.append('forceRefresh', 'true');
+        return fetchApi(`/hot-drama/maoyan/variety-list?${params.toString()}`);
+    },
+
+    // 获取综艺节目详情
+    getVarietyDetail: (seriesId: string, showDate?: string) => {
+        const params = new URLSearchParams({ seriesId });
+        if (showDate) params.append('showDate', showDate);
+        return fetchApi(`/hot-drama/maoyan/variety-detail?${params.toString()}`);
+    },
+
+    // 获取综艺节目的B站解说
+    getVarietyBilibiliComments: (seriesId: string, limit?: number) => {
+        const params = new URLSearchParams({ seriesId });
+        if (limit) params.append('limit', limit.toString());
+        return fetchApi(`/hot-drama/maoyan/variety/bilibili-comments?${params.toString()}`);
+    },
+
+    // 获取综艺节目的小红书讨论
+    getVarietyXiaohongshuComments: (seriesId: string, limit?: number) => {
+        const params = new URLSearchParams({ seriesId });
+        if (limit) params.append('limit', limit.toString());
+        return fetchApi(`/hot-drama/maoyan/variety/xiaohongshu-comments?${params.toString()}`);
+    },
+
+    // 获取综艺节目的微博热评
+    getVarietyWeiboComments: (seriesId: string, limit?: number) => {
+        const params = new URLSearchParams({ seriesId });
+        if (limit) params.append('limit', limit.toString());
+        return fetchApi(`/hot-drama/maoyan/variety/weibo-comments?${params.toString()}`);
+    },
 };
 
 // Scheduler API

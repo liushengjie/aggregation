@@ -13,6 +13,7 @@ export interface MaoyanWebSeriesItem {
   releaseInfo: string;
   category?: string;
   imgUrl?: string;
+  type?: 'tv' | 'webSeries' | 'variety';
   fetchedAt: string;
 }
 
@@ -305,6 +306,7 @@ export async function scrapeMaoyanMovieDetail(movieId: string, showDate?: string
 
 /**
  * 从API获取网播热剧列表
+ * 合并"电视剧"、"网络剧"和"综艺"三个tab的数据
  */
 export async function scrapeMaoyanWebSeriesList(): Promise<MaoyanWebSeriesListResponse> {
   // 获取今天的日期
@@ -314,8 +316,95 @@ export async function scrapeMaoyanWebSeriesList(): Promise<MaoyanWebSeriesListRe
   const day = String(today.getDate()).padStart(2, '0');
   const showDate = `${year}${month}${day}`;
 
-  // 构建API URL（简化版，去掉一些动态参数）
-  const apiUrl = `https://piaofang.maoyan.com/dashboard/webHeatData?showDate=${showDate}&WuKongReady=h5`;
+  const result: MaoyanWebSeriesListResponse = {
+    series: [],
+    total: 0,
+    fetchedAt: new Date().toISOString(),
+  };
+
+  const headers: Record<string, string> = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+    'Referer': 'https://piaofang.maoyan.com/',
+  };
+
+  // 定义要获取的tab类型：0=电视剧, 1=网络剧, 2=综艺
+  const seriesTypes = [
+    { type: 0, name: '电视剧' },
+    { type: 1, name: '网络剧' },
+    { type: 2, name: '综艺' }
+  ];
+
+  const allSeries: MaoyanWebSeriesItem[] = [];
+  const seriesIdSet = new Set<string>(); // 用于去重
+
+  // 分别获取两个tab的数据
+  for (const { type, name } of seriesTypes) {
+    try {
+      // 构建API URL，添加seriesType参数
+      const apiUrl = `https://piaofang.maoyan.com/dashboard/webHeatData?showDate=${showDate}&seriesType=${type}&WuKongReady=h5`;
+
+      console.log(`[MaoyanWebSeriesList] 正在获取${name}数据...`);
+
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers,
+      });
+
+      if (!response.ok) {
+        console.error(`[MaoyanWebSeriesList] ${name}API请求失败: ${response.status} ${response.statusText}`);
+        continue;
+      }
+
+      const json = await response.json();
+
+      if (json.status && json.dataList && json.dataList.list && Array.isArray(json.dataList.list)) {
+        // 根据type确定数据类型
+        const itemType = type === 0 ? 'tv' : type === 1 ? 'webSeries' : 'variety';
+        const parsedSeries = parseWebSeriesList(json.dataList.list, itemType);
+        
+        // 去重并添加到总列表
+        for (const series of parsedSeries) {
+          if (!seriesIdSet.has(series.seriesId)) {
+            seriesIdSet.add(series.seriesId);
+            allSeries.push(series);
+          }
+        }
+        
+        console.log(`[MaoyanWebSeriesList] 成功获取${name} ${parsedSeries.length} 部，已去重后总数: ${allSeries.length}`);
+      } else {
+        console.warn(`[MaoyanWebSeriesList] ${name}API返回格式不符合预期`);
+      }
+
+      // 添加延迟避免请求过快
+      await new Promise(resolve => setTimeout(resolve, 500));
+    } catch (error: any) {
+      console.error(`[MaoyanWebSeriesList] 获取${name}数据失败:`, error.message);
+    }
+  }
+
+  // 按热度排序
+  allSeries.sort((a, b) => (b.currHeat || 0) - (a.currHeat || 0));
+
+  result.series = allSeries;
+  result.total = allSeries.length;
+  console.log(`[MaoyanWebSeriesList] 最终合并结果: 共 ${result.total} 部网播热剧（电视剧+网络剧+综艺）`);
+
+  return result;
+}
+
+/**
+ * 从API获取综艺节目列表
+ * 仅采集seriesType=2的综艺数据
+ */
+export async function scrapeMaoyanVarietyList(): Promise<MaoyanWebSeriesListResponse> {
+  // 获取今天的日期
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  const showDate = `${year}${month}${day}`;
 
   const result: MaoyanWebSeriesListResponse = {
     series: [],
@@ -323,13 +412,18 @@ export async function scrapeMaoyanWebSeriesList(): Promise<MaoyanWebSeriesListRe
     fetchedAt: new Date().toISOString(),
   };
 
+  const headers: Record<string, string> = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+    'Referer': 'https://piaofang.maoyan.com/',
+  };
+
   try {
-    const headers: Record<string, string> = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'application/json, text/plain, */*',
-      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-      'Referer': 'https://piaofang.maoyan.com/',
-    };
+    // 构建API URL，seriesType=2表示综艺
+    const apiUrl = `https://piaofang.maoyan.com/dashboard/webHeatData?showDate=${showDate}&seriesType=2&WuKongReady=h5`;
+
+    console.log(`[MaoyanVarietyList] 正在获取综艺数据...`);
 
     const response = await fetch(apiUrl, {
       method: 'GET',
@@ -337,21 +431,22 @@ export async function scrapeMaoyanWebSeriesList(): Promise<MaoyanWebSeriesListRe
     });
 
     if (!response.ok) {
-      console.error(`[MaoyanWebSeriesList] API请求失败: ${response.status} ${response.statusText}`);
+      console.error(`[MaoyanVarietyList] API请求失败: ${response.status} ${response.statusText}`);
       return result;
     }
 
     const json = await response.json();
 
     if (json.status && json.dataList && json.dataList.list && Array.isArray(json.dataList.list)) {
-      result.series = parseWebSeriesList(json.dataList.list);
-      result.total = result.series.length;
-      console.log(`[MaoyanWebSeriesList] 成功获取 ${result.total} 部网播热剧`);
+      const parsedSeries = parseWebSeriesList(json.dataList.list, 'variety');
+      result.series = parsedSeries;
+      result.total = parsedSeries.length;
+      console.log(`[MaoyanVarietyList] 成功获取 ${result.total} 个综艺节目`);
     } else {
-      console.warn('[MaoyanWebSeriesList] API返回格式不符合预期');
+      console.warn('[MaoyanVarietyList] API返回格式不符合预期');
     }
   } catch (error: any) {
-    console.error('[MaoyanWebSeriesList] 获取网播热剧列表失败:', error.message);
+    console.error('[MaoyanVarietyList] 获取综艺列表失败:', error.message);
   }
 
   return result;
@@ -360,7 +455,7 @@ export async function scrapeMaoyanWebSeriesList(): Promise<MaoyanWebSeriesListRe
 /**
  * 解析网播热剧列表数据
  */
-function parseWebSeriesList(data: any[]): MaoyanWebSeriesItem[] {
+function parseWebSeriesList(data: any[], type?: 'tv' | 'webSeries' | 'variety'): MaoyanWebSeriesItem[] {
   const series: MaoyanWebSeriesItem[] = [];
   const fetchedAt = new Date().toISOString();
 
@@ -382,6 +477,7 @@ function parseWebSeriesList(data: any[]): MaoyanWebSeriesItem[] {
         releaseInfo: seriesInfo.releaseInfo || '',
         category: seriesInfo.category || undefined,
         imgUrl: seriesInfo.imgUrl || undefined,
+        type: type || 'webSeries',
         fetchedAt,
       });
     } catch (error) {

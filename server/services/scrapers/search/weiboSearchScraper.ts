@@ -2,7 +2,23 @@
  * 微博搜索爬虫 - 使用移动端API
  * 改用 m.weibo.cn 移动端API，返回JSON数据，更稳定
  * 支持多种备用方案：Cookie模式、游客模式、备用API端点
+ * 
+ * Cookie配置：
+ * - 从 .env 文件中读取 WEIBO_COOKIE 或 WEIBO_SEARCH_COOKIE
+ * - 如果未设置，会自动使用游客Cookie
  */
+
+// 确保环境变量已加载（如果dotenv尚未加载，则加载它）
+import dotenv from 'dotenv';
+import { resolve } from 'path';
+if (!process.env.WEIBO_COOKIE && !process.env.WEIBO_SEARCH_COOKIE) {
+    // 尝试加载 .env 文件（如果尚未加载）
+    try {
+        dotenv.config({ path: resolve(process.cwd(), '.env') });
+    } catch (error) {
+        // dotenv可能已经加载，忽略错误
+    }
+}
 
 /**
  * 微博搜索结果接口
@@ -63,40 +79,21 @@ export interface WeiboSearchOptions {
 let cachedVisitorCookie: string | null = null;
 let visitorCookieExpireTime: number = 0;
 
-// 上次请求时间（用于限速）
-let lastRequestTime: number = 0;
-const MIN_REQUEST_INTERVAL = 1000; // 最小请求间隔：1秒
-
-/**
- * 延迟函数，控制请求速度
- */
-function delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-/**
- * 请求限速：确保两次请求之间至少间隔指定时间
- */
-async function rateLimit(): Promise<void> {
-    const now = Date.now();
-    const elapsed = now - lastRequestTime;
-    if (elapsed < MIN_REQUEST_INTERVAL) {
-        const waitTime = MIN_REQUEST_INTERVAL - elapsed;
-        await delay(waitTime);
-    }
-    lastRequestTime = Date.now();
-}
-
 /**
  * 从环境变量获取微博cookie
+ * 优先从 .env 文件中的 WEIBO_COOKIE 或 WEIBO_SEARCH_COOKIE 读取
  */
 function getWeiboCookieFromEnv(): string | null {
+    // 优先使用 WEIBO_COOKIE，如果没有则使用 WEIBO_SEARCH_COOKIE
     const cookie = process.env.WEIBO_COOKIE ||
         process.env.WEIBO_SEARCH_COOKIE ||
         null;
 
     if (cookie) {
-        console.log(`[WeiboSearch] 从环境变量读取到cookie，长度: ${cookie.length}`);
+        const source = process.env.WEIBO_COOKIE ? 'WEIBO_COOKIE' : 'WEIBO_SEARCH_COOKIE';
+        console.log(`[WeiboSearch] 从.env文件读取到cookie (${source})，长度: ${cookie.length}`);
+    } else {
+        console.log(`[WeiboSearch] .env文件中未找到WEIBO_COOKIE或WEIBO_SEARCH_COOKIE，将使用游客cookie`);
     }
 
     return cookie;
@@ -272,10 +269,13 @@ export async function scrapeWeiboSearch(
     console.log(`[WeiboSearch] 开始搜索: ${keyword}, 页码: ${pageNum}`);
 
     try {
-        // 请求限速
-        await rateLimit();
+        // 优先使用环境变量cookie，如果没有则使用游客cookie
+        let cookieString = getWeiboCookieFromEnv();
+        if (!cookieString) {
+            console.log(`[WeiboSearch] 环境变量未设置cookie，尝试使用游客cookie`);
+            cookieString = await getVisitorCookie();
+        }
         
-        const cookieString = getWeiboCookieFromEnv();
         const apiUrl = buildMobileSearchUrl(keyword, pageNum);
 
         console.log(`[WeiboSearch] 请求API: ${apiUrl}`);
@@ -296,6 +296,9 @@ export async function scrapeWeiboSearch(
 
         if (cookieString) {
             headers['Cookie'] = cookieString;
+            console.log(`[WeiboSearch] 使用Cookie: ${cookieString.substring(0, 50)}...`);
+        } else {
+            console.warn(`[WeiboSearch] 警告：未设置任何Cookie，请求可能失败或被限制`);
         }
 
         const response = await fetch(apiUrl, {
@@ -347,15 +350,29 @@ export async function scrapeWeiboSearch(
             console.error(`[WeiboSearch] API返回错误: ${errorMsg} (code: ${errorCode})`);
             console.error(`[WeiboSearch] 完整响应: ${JSON.stringify(json).substring(0, 500)}`);
 
-            // 检查是否是登录要求（ok: -100 通常表示需要登录）
-            if (json.ok === -100 || json.url?.includes('passport.weibo.com') || errorCode === -100) {
-                console.warn(`[WeiboSearch] 需要登录认证，可能的原因：`);
-                console.warn(`  1. Cookie已过期，请重新获取最新的Cookie`);
-                console.warn(`  2. Cookie格式不正确，请确保包含 SUB、SUBP、SSOLoginState 等关键字段`);
-                console.warn(`  3. 账号可能被限制，请稍后再试`);
-                console.warn(`  4. 建议：在浏览器中登录微博，然后从开发者工具中复制完整的Cookie字符串`);
+            // 检查是否是验证码要求（ok: -100 且包含 geetest URL）
+            if (json.ok === -100) {
+                if (json.url?.includes('geetest') || json.url?.includes('api/geetest')) {
+                    console.error(`[WeiboSearch] ⚠️ 触发人机验证（Geetest验证码），可能的原因：`);
+                    console.error(`  1. Cookie已过期或无效，请更新 .env 文件中的 WEIBO_COOKIE`);
+                    console.error(`  2. 请求频率过高，建议增加请求间隔`);
+                    console.error(`  3. IP地址被限制，可能需要更换IP或等待一段时间`);
+                    console.error(`  4. 建议：在浏览器中登录微博，从开发者工具复制最新的完整Cookie到 .env 文件`);
+                    console.error(`  5. 验证码URL: ${json.url}`);
+                } else if (json.url?.includes('passport.weibo.com')) {
+                    console.warn(`[WeiboSearch] 需要登录认证，可能的原因：`);
+                    console.warn(`  1. Cookie已过期，请重新获取最新的Cookie`);
+                    console.warn(`  2. Cookie格式不正确，请确保包含 SUB、SUBP、SSOLoginState 等关键字段`);
+                    console.warn(`  3. 账号可能被限制，请稍后再试`);
+                    console.warn(`  4. 建议：在浏览器中登录微博，然后从开发者工具中复制完整的Cookie字符串到 .env 文件`);
+                } else {
+                    console.warn(`[WeiboSearch] API返回错误码 -100，可能的原因：`);
+                    console.warn(`  1. Cookie已过期或无效`);
+                    console.warn(`  2. 需要登录或验证`);
+                    console.warn(`  3. 请求被限制`);
+                }
             } else if (errorCode === 100000 || errorMsg.includes('登录') || errorMsg.includes('cookie')) {
-                console.warn(`[WeiboSearch] 可能是Cookie过期或无效，请检查环境变量 WEIBO_COOKIE`);
+                console.warn(`[WeiboSearch] 可能是Cookie过期或无效，请检查 .env 文件中的 WEIBO_COOKIE`);
             }
 
             return {
