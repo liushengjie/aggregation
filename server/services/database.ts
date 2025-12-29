@@ -279,6 +279,123 @@ function initSchema() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_maoyan_calendar_fetched_at ON maoyan_calendar(fetched_at DESC)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_maoyan_rankings_category ON maoyan_rankings(category)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_maoyan_rankings_fetched_at ON maoyan_rankings(fetched_at DESC)`);
+
+  // B站搜索表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS bilibili_search (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      search_keyword TEXT NOT NULL,
+      search_page INTEGER NOT NULL DEFAULT 1,
+      result_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      desc TEXT,
+      author_name TEXT,
+      author_mid TEXT,
+      author_avatar TEXT,
+      author_profile_url TEXT,
+      cover TEXT,
+      duration TEXT,
+      publish_time TEXT,
+      url TEXT NOT NULL,
+      type TEXT NOT NULL CHECK(type IN ('video', 'bangumi', 'article', 'live')),
+      stats_views INTEGER DEFAULT 0,
+      stats_danmaku INTEGER DEFAULT 0,
+      stats_likes INTEGER DEFAULT 0,
+      stats_coins INTEGER DEFAULT 0,
+      stats_favorites INTEGER DEFAULT 0,
+      stats_shares INTEGER DEFAULT 0,
+      stats_replies INTEGER DEFAULT 0,
+      tags TEXT,
+      bvid TEXT,
+      aid TEXT,
+      fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(search_keyword, search_page, result_id)
+    )
+  `);
+
+  // 微博搜索表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS weibo_search (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      search_keyword TEXT NOT NULL,
+      search_page INTEGER NOT NULL DEFAULT 1,
+      result_id TEXT NOT NULL,
+      text TEXT NOT NULL,
+      author_name TEXT,
+      author_avatar TEXT,
+      author_profile_url TEXT,
+      publish_time TEXT,
+      publish_from TEXT,
+      url TEXT NOT NULL,
+      images TEXT,
+      video_cover TEXT,
+      video_url TEXT,
+      video_duration TEXT,
+      stats_reposts INTEGER DEFAULT 0,
+      stats_comments INTEGER DEFAULT 0,
+      stats_likes INTEGER DEFAULT 0,
+      stats_views INTEGER DEFAULT 0,
+      topics TEXT,
+      mentions TEXT,
+      is_repost INTEGER DEFAULT 0,
+      original_weibo_id TEXT,
+      original_weibo_text TEXT,
+      original_weibo_author TEXT,
+      fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(search_keyword, search_page, result_id)
+    )
+  `);
+
+  // 小红书搜索表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS xiaohongshu_search (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      search_keyword TEXT NOT NULL,
+      search_page INTEGER NOT NULL DEFAULT 1,
+      result_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      desc TEXT,
+      author_name TEXT,
+      author_avatar TEXT,
+      author_user_id TEXT,
+      cover TEXT,
+      stats_likes INTEGER DEFAULT 0,
+      stats_comments INTEGER DEFAULT 0,
+      stats_collects INTEGER DEFAULT 0,
+      type TEXT NOT NULL CHECK(type IN ('normal', 'video')),
+      url TEXT NOT NULL,
+      fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(search_keyword, search_page, result_id)
+    )
+  `);
+
+  // Create indexes for search tables
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_bilibili_search_keyword ON bilibili_search(search_keyword)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_bilibili_search_fetched_at ON bilibili_search(fetched_at DESC)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_weibo_search_keyword ON weibo_search(search_keyword)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_weibo_search_fetched_at ON weibo_search(fetched_at DESC)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_xiaohongshu_search_keyword ON xiaohongshu_search(search_keyword)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_xiaohongshu_search_fetched_at ON xiaohongshu_search(fetched_at DESC)`);
+
+  // 电影搜索关系表（存储电影和搜索结果的关系）
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS movie_search_relations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      movie_id TEXT NOT NULL,
+      movie_title TEXT NOT NULL,
+      platform TEXT NOT NULL CHECK(platform IN ('weibo', 'xiaohongshu', 'bilibili')),
+      search_keyword TEXT NOT NULL,
+      search_type TEXT,
+      total_results INTEGER DEFAULT 0,
+      fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(movie_id, platform, search_keyword)
+    )
+  `);
+
+  // Create indexes for movie_search_relations
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_movie_search_relations_movie_id ON movie_search_relations(movie_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_movie_search_relations_platform ON movie_search_relations(platform)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_movie_search_relations_fetched_at ON movie_search_relations(fetched_at DESC)`);
 }
 
 // Migration function to update platform_accounts table CHECK constraint
@@ -1181,6 +1298,77 @@ export const schedulerConfigOps = {
   // Delete a scheduler configuration (usually not needed, but available)
   delete: db.prepare(`
     DELETE FROM scheduler_config WHERE scheduler_name = ?
+  `),
+};
+
+// Search operations
+export const searchOps = {
+  // B站搜索操作
+  insertBilibiliSearch: db.prepare(`
+    INSERT OR REPLACE INTO bilibili_search 
+    (search_keyword, search_page, result_id, title, desc, author_name, author_mid, author_avatar, author_profile_url, 
+     cover, duration, publish_time, url, type, stats_views, stats_danmaku, stats_likes, stats_coins, 
+     stats_favorites, stats_shares, stats_replies, tags, bvid, aid, fetched_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+  `),
+
+  // 微博搜索操作
+  insertWeiboSearch: db.prepare(`
+    INSERT OR REPLACE INTO weibo_search 
+    (search_keyword, search_page, result_id, text, author_name, author_avatar, author_profile_url, 
+     publish_time, publish_from, url, images, video_cover, video_url, video_duration, 
+     stats_reposts, stats_comments, stats_likes, stats_views, topics, mentions, is_repost, 
+     original_weibo_id, original_weibo_text, original_weibo_author, fetched_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+  `),
+
+  // 小红书搜索操作
+  insertXiaohongshuSearch: db.prepare(`
+    INSERT OR REPLACE INTO xiaohongshu_search 
+    (search_keyword, search_page, result_id, title, desc, author_name, author_avatar, author_user_id, 
+     cover, stats_likes, stats_comments, stats_collects, type, url, fetched_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+  `),
+
+  // 电影搜索关系操作
+  insertMovieSearchRelation: db.prepare(`
+    INSERT OR REPLACE INTO movie_search_relations 
+    (movie_id, movie_title, platform, search_keyword, search_type, total_results, fetched_at)
+    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+  `),
+
+  // 检查电影是否已有搜索结果
+  hasMovieSearchResults: db.prepare(`
+    SELECT COUNT(*) as count FROM movie_search_relations 
+    WHERE movie_id = ? AND platform = ?
+  `),
+
+  // 获取电影的所有搜索关系
+  getMovieSearchRelations: db.prepare(`
+    SELECT movie_id, movie_title, platform, search_keyword, search_type, total_results, fetched_at
+    FROM movie_search_relations
+    WHERE movie_id = ?
+    ORDER BY platform, fetched_at DESC
+  `),
+
+  // 根据电影ID获取B站搜索结果
+  getBilibiliSearchByMovieId: db.prepare(`
+    SELECT bs.*
+    FROM bilibili_search bs
+    INNER JOIN movie_search_relations msr ON bs.search_keyword = msr.search_keyword
+    WHERE msr.movie_id = ? AND msr.platform = 'bilibili'
+    ORDER BY bs.stats_views DESC, bs.fetched_at DESC
+    LIMIT ?
+  `),
+
+  // 根据电影ID获取小红书搜索结果
+  getXiaohongshuSearchByMovieId: db.prepare(`
+    SELECT xs.*
+    FROM xiaohongshu_search xs
+    INNER JOIN movie_search_relations msr ON xs.search_keyword = msr.search_keyword
+    WHERE msr.movie_id = ? AND msr.platform = 'xiaohongshu'
+    ORDER BY xs.stats_likes DESC, xs.fetched_at DESC
+    LIMIT ?
   `),
 };
 

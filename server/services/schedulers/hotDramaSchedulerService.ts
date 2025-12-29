@@ -236,6 +236,11 @@ export async function refreshMaoyanData(): Promise<{ success: boolean; data: { m
 
         if (result.success) {
             console.log(`[MaoyanScheduler] Successfully refreshed ${result.total} movies`);
+            
+            // 对每个电影进行搜索并入库
+            const { searchAndSaveMovieDiscussions } = await import('../hotDramaService.js');
+            await searchAndSaveMovieDiscussions(result.movies);
+            
             return {
                 success: true,
                 data: { movies: result.movies, total: result.total }

@@ -80,7 +80,9 @@ function buildMobileSearchUrl(keyword: string, page: number): string {
     const encodedKeyword = encodeURIComponent(keyword);
     // containerid格式: 100103type%3D1%26q%3D关键词
     const containerid = `100103type%3D1%26q%3D${encodedKeyword}`;
-    return `https://m.weibo.cn/api/container/getIndex?containerid=${containerid}&page_type=searchall&page=${page}`;
+    // 添加时间戳参数，避免缓存
+    const timestamp = Date.now();
+    return `https://m.weibo.cn/api/container/getIndex?containerid=${containerid}&page_type=searchall&page=${page}&_t=${timestamp}`;
 }
 
 /**
@@ -197,13 +199,18 @@ export async function scrapeWeiboSearch(
         
         console.log(`[WeiboSearch] 请求API: ${apiUrl}`);
         
-        // 构建请求头
+        // 构建请求头 - 模拟真实浏览器请求
         const headers: Record<string, string> = {
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
             'Accept': 'application/json, text/plain, */*',
-            'Accept-Language': 'zh-CN,zh;q=0.9',
-            'Referer': 'https://m.weibo.cn/',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Referer': 'https://m.weibo.cn/search?containerid=100103type%3D1%26q%3D' + encodeURIComponent(keyword),
+            'Origin': 'https://m.weibo.cn',
             'X-Requested-With': 'XMLHttpRequest',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-origin',
         };
         
         if (cookieString) {
@@ -216,7 +223,9 @@ export async function scrapeWeiboSearch(
         });
         
         if (!response.ok) {
+            const errorText = await response.text().catch(() => '无法读取错误信息');
             console.error(`[WeiboSearch] API请求失败: ${response.status} ${response.statusText}`);
+            console.error(`[WeiboSearch] 响应内容: ${errorText.substring(0, 500)}`);
             return {
                 keyword,
                 page: pageNum,
@@ -225,11 +234,49 @@ export async function scrapeWeiboSearch(
             };
         }
         
-        const json = await response.json();
+        let json: any;
+        let responseText: string;
+        try {
+            responseText = await response.text();
+            if (!responseText || responseText.trim() === '') {
+                console.error(`[WeiboSearch] API返回空响应`);
+                return {
+                    keyword,
+                    page: pageNum,
+                    results: [],
+                    hasMore: false
+                };
+            }
+            json = JSON.parse(responseText);
+        } catch (parseError: any) {
+            console.error(`[WeiboSearch] JSON解析失败: ${parseError.message}`);
+            console.error(`[WeiboSearch] 响应内容: ${responseText?.substring(0, 500) || '无法读取'}`);
+            return {
+                keyword,
+                page: pageNum,
+                results: [],
+                hasMore: false
+            };
+        }
         
         // 检查API返回状态
         if (json.ok !== 1) {
-            console.error(`[WeiboSearch] API返回错误: ${json.msg || 'unknown error'}`);
+            const errorMsg = json.msg || json.message || json.error || 'unknown error';
+            const errorCode = json.code || json.status || json.ok || 'N/A';
+            console.error(`[WeiboSearch] API返回错误: ${errorMsg} (code: ${errorCode})`);
+            console.error(`[WeiboSearch] 完整响应: ${JSON.stringify(json).substring(0, 500)}`);
+            
+            // 检查是否是登录要求（ok: -100 通常表示需要登录）
+            if (json.ok === -100 || json.url?.includes('passport.weibo.com') || errorCode === -100) {
+                console.warn(`[WeiboSearch] 需要登录认证，可能的原因：`);
+                console.warn(`  1. Cookie已过期，请重新获取最新的Cookie`);
+                console.warn(`  2. Cookie格式不正确，请确保包含 SUB、SUBP、SSOLoginState 等关键字段`);
+                console.warn(`  3. 账号可能被限制，请稍后再试`);
+                console.warn(`  4. 建议：在浏览器中登录微博，然后从开发者工具中复制完整的Cookie字符串`);
+            } else if (errorCode === 100000 || errorMsg.includes('登录') || errorMsg.includes('cookie')) {
+                console.warn(`[WeiboSearch] 可能是Cookie过期或无效，请检查环境变量 WEIBO_COOKIE`);
+            }
+            
             return {
                 keyword,
                 page: pageNum,
@@ -241,6 +288,12 @@ export async function scrapeWeiboSearch(
         // 解析搜索结果
         const results: WeiboSearchResult[] = [];
         const cards = json.data?.cards || [];
+        
+        // 如果没有cards，尝试其他数据结构
+        if (!cards || cards.length === 0) {
+            console.warn(`[WeiboSearch] 未找到cards数据，尝试其他数据结构`);
+            console.warn(`[WeiboSearch] 响应数据结构: ${JSON.stringify(Object.keys(json)).substring(0, 200)}`);
+        }
         
         for (const card of cards) {
             // card_type 9 是普通微博，11 是卡片组

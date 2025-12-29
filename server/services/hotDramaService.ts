@@ -4,6 +4,11 @@
 
 import type { MaoyanMovieItem, MaoyanMovieListResponse } from './scrapers/hotDrama/maoyanScraper.js';
 import { refreshMaoyanData } from './schedulers/hotDramaSchedulerService.js';
+import { scrapeWeiboSearch } from './scrapers/search/weiboSearchScraper.js';
+import { scrapeXiaohongshuSearch } from './scrapers/search/xiaohongshuSearchScraper.js';
+import { scrapeBilibiliSearch } from './scrapers/search/bilibiliSearchScraper.js';
+import { saveBilibiliSearchResults, saveWeiboSearchResults, saveXiaohongshuSearchResults } from './searchService.js';
+import { searchOps } from './database.js';
 
 const TMDB_API_KEY = '9d0a3769b77fee44cfbf912cd84e62f1';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
@@ -278,38 +283,34 @@ function loadMaoyanMovieListFromDatabase(): MaoyanMovieItem[] {
     const rows = maoyanOps.getLatestMovieList.all() as Array<{
       movieId: string;
       title: string;
-      originalTitle: string | null;
-      poster: string | null;
-      releaseDate: string | null;
+      releaseInfo: string | null;
       boxOffice: number | null;
       boxOfficeUnit: string | null;
-      rating: number | null;
-      genre: string | null;
-      director: string | null;
-      actors: string | null;
-      description: string | null;
-      duration: number | null;
-      country: string | null;
-      language: string | null;
+      sumBoxDesc: string | null;
+      sumSplitBoxDesc: string | null;
+      boxRate: string | null;
+      boxSplitRate: string | null;
+      showCount: number | null;
+      showCountRate: string | null;
+      avgSeatView: string | null;
+      avgShowView: string | null;
       fetchedAt: string;
     }>;
 
     return rows.map(row => ({
       movieId: row.movieId,
       title: row.title,
-      originalTitle: row.originalTitle || undefined,
-      poster: row.poster || undefined,
-      releaseDate: row.releaseDate || undefined,
-      boxOffice: row.boxOffice || undefined,
+      releaseInfo: row.releaseInfo || undefined,
+      boxOffice: row.boxOffice ?? undefined,
       boxOfficeUnit: row.boxOfficeUnit || undefined,
-      rating: row.rating || undefined,
-      genre: row.genre || undefined,
-      director: row.director || undefined,
-      actors: row.actors || undefined,
-      description: row.description || undefined,
-      duration: row.duration || undefined,
-      country: row.country || undefined,
-      language: row.language || undefined,
+      sumBoxDesc: row.sumBoxDesc || undefined,
+      sumSplitBoxDesc: row.sumSplitBoxDesc || undefined,
+      boxRate: row.boxRate || undefined,
+      boxSplitRate: row.boxSplitRate || undefined,
+      showCount: row.showCount ?? undefined,
+      showCountRate: row.showCountRate || undefined,
+      avgSeatView: row.avgSeatView || undefined,
+      avgShowView: row.avgShowView || undefined,
       fetchedAt: row.fetchedAt,
     }));
   } catch (error: any) {
@@ -322,7 +323,7 @@ function loadMaoyanMovieListFromDatabase(): MaoyanMovieItem[] {
  * 获取猫眼电影列表（直接从数据库读取）
  * @param forceRefresh 是否强制刷新
  */
-export async function getMaoyanMovieList(forceRefresh: boolean = false): Promise<MaoyanMovieItem[]> {
+export async function getMaoyanMovieList(forceRefresh: boolean = true): Promise<MaoyanMovieItem[]> {
   // 如果强制刷新，触发抓取
   if (forceRefresh) {
     console.log('[MaoyanService] Force refresh requested, triggering scrape...');
@@ -332,4 +333,107 @@ export async function getMaoyanMovieList(forceRefresh: boolean = false): Promise
 
   // 直接从数据库读取
   return loadMaoyanMovieListFromDatabase();
+}
+
+/**
+ * 搜索并保存电影相关的讨论
+ */
+export async function searchAndSaveMovieDiscussions(movies: MaoyanMovieItem[]): Promise<void> {
+    console.log(`[MaoyanService] Starting to search discussions for ${movies.length} movies...`);
+    
+    for (const movie of movies) {
+        const movieId = movie.movieId;
+        const movieTitle = movie.title;
+        
+        try {
+            // 检查是否已有搜索结果
+            const hasWeibo = (searchOps.hasMovieSearchResults.get(movieId, 'weibo') as { count: number })?.count || 0;
+            const hasXiaohongshu = (searchOps.hasMovieSearchResults.get(movieId, 'xiaohongshu') as { count: number })?.count || 0;
+            const hasBilibili = (searchOps.hasMovieSearchResults.get(movieId, 'bilibili') as { count: number })?.count || 0;
+            
+            // 1. 微博搜索（电影名称）
+            if (hasWeibo === 0) {
+                try {
+                    console.log(`[MaoyanService] Searching Weibo for: ${movieTitle}`);
+                    const weiboResult = await scrapeWeiboSearch(movieTitle, { page: 1, limit: 20 });
+                    if (weiboResult.results.length > 0) {
+                        await saveWeiboSearchResults(movieTitle, 1, weiboResult.results);
+                        searchOps.insertMovieSearchRelation.run(
+                            movieId,
+                            movieTitle,
+                            'weibo',
+                            movieTitle,
+                            'movie',
+                            weiboResult.results.length
+                        );
+                        console.log(`[MaoyanService] Saved ${weiboResult.results.length} Weibo results for ${movieTitle}`);
+                    }
+                    // 添加延迟避免请求过快
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                } catch (error: any) {
+                    console.error(`[MaoyanService] Error searching Weibo for ${movieTitle}: ${error.message}`);
+                }
+            } else {
+                console.log(`[MaoyanService] Skipping Weibo search for ${movieTitle} (already exists)`);
+            }
+            
+            // 2. 小红书搜索（电影名称）
+            if (hasXiaohongshu === 0) {
+                try {
+                    console.log(`[MaoyanService] Searching Xiaohongshu for: ${movieTitle}`);
+                    const xhsResult = await scrapeXiaohongshuSearch(movieTitle, { page: 1, limit: 20 });
+                    if (xhsResult.results.length > 0) {
+                        await saveXiaohongshuSearchResults(movieTitle, 1, xhsResult.results);
+                        searchOps.insertMovieSearchRelation.run(
+                            movieId,
+                            movieTitle,
+                            'xiaohongshu',
+                            movieTitle,
+                            'movie',
+                            xhsResult.results.length
+                        );
+                        console.log(`[MaoyanService] Saved ${xhsResult.results.length} Xiaohongshu results for ${movieTitle}`);
+                    }
+                    // 添加延迟避免请求过快
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                } catch (error: any) {
+                    console.error(`[MaoyanService] Error searching Xiaohongshu for ${movieTitle}: ${error.message}`);
+                }
+            } else {
+                console.log(`[MaoyanService] Skipping Xiaohongshu search for ${movieTitle} (already exists)`);
+            }
+            
+            // 3. B站搜索（电影名称 + "解说"）
+            if (hasBilibili === 0) {
+                try {
+                    const bilibiliKeyword = `${movieTitle} 解说`;
+                    console.log(`[MaoyanService] Searching Bilibili for: ${bilibiliKeyword}`);
+                    const biliResult = await scrapeBilibiliSearch(bilibiliKeyword, { page: 1, limit: 20, searchType: 'video' });
+                    if (biliResult.results.length > 0) {
+                        await saveBilibiliSearchResults(bilibiliKeyword, 1, biliResult.results);
+                        searchOps.insertMovieSearchRelation.run(
+                            movieId,
+                            movieTitle,
+                            'bilibili',
+                            bilibiliKeyword,
+                            'video',
+                            biliResult.results.length
+                        );
+                        console.log(`[MaoyanService] Saved ${biliResult.results.length} Bilibili results for ${bilibiliKeyword}`);
+                    }
+                    // 添加延迟避免请求过快
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                } catch (error: any) {
+                    console.error(`[MaoyanService] Error searching Bilibili for ${movieTitle}: ${error.message}`);
+                }
+            } else {
+                console.log(`[MaoyanService] Skipping Bilibili search for ${movieTitle} (already exists)`);
+            }
+            
+        } catch (error: any) {
+            console.error(`[MaoyanService] Error processing movie ${movieTitle}: ${error.message}`);
+        }
+    }
+    
+    console.log(`[MaoyanService] Finished searching discussions for all movies`);
 }

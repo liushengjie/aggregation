@@ -45,83 +45,9 @@ export interface MaoyanMovieDetail {
 }
 
 /**
- * 猫眼自定义字体字符映射表
- * 猫眼使用自定义字体来混淆数字，需要建立映射关系
- */
-const MAOYAN_FONT_MAP: { [key: string]: string } = {
-  '\ue3ec': '0',
-  '\uedba': '1',
-  '\ued30': '2',
-  '\uef28': '3',
-  '\uf11c': '4',
-  '\ueb19': '5',
-  '\uf3e8': '6',
-  '\uf7d2': '7',
-  '\uf70e': '8',
-  '\uf7b3': '9',
-};
-
-/**
- * 解码猫眼自定义字体数字
- */
-function decodeMaoyanFont(text: string): string {
-  let result = text;
-  for (const [customChar, digit] of Object.entries(MAOYAN_FONT_MAP)) {
-    result = result.split(customChar).join(digit);
-  }
-  return result;
-}
-
-/**
- * 解码HTML实体编码的数字
- */
-function decodeHtmlNumber(htmlNum: string): number | null {
-  if (!htmlNum) return null;
-
-  try {
-    console.log('[decodeHtmlNumber] 原始HTML实体:', htmlNum);
-
-    // HTML实体格式：&#xXXXX; (十六进制) 或 &#DDDD; (十进制)
-    let decoded = htmlNum;
-
-    // 解码十六进制实体 (&#xXXXX;)
-    decoded = decoded.replace(/&#x([0-9a-fA-F]+);/g, (match, hex) => {
-      const charCode = parseInt(hex, 16);
-      return String.fromCharCode(charCode);
-    });
-
-    // 解码十进制实体 (&#DDDD;)
-    decoded = decoded.replace(/&#(\d+);/g, (match, dec) => {
-      const charCode = parseInt(dec, 10);
-      return String.fromCharCode(charCode);
-    });
-
-    console.log('[decodeHtmlNumber] HTML解码后:', decoded, '字符码:', Array.from(decoded).map(c => c.charCodeAt(0).toString(16)));
-
-    // 应用猫眼自定义字体映射
-    const fontDecoded = decodeMaoyanFont(decoded);
-    console.log('[decodeHtmlNumber] 字体映射后:', fontDecoded);
-
-    // 提取数字（包括小数点）
-    const match = fontDecoded.match(/[\d.]+/);
-    if (match) {
-      const result = parseFloat(match[0]);
-      console.log('[decodeHtmlNumber] 提取的数字:', result);
-      return result;
-    }
-    console.log('[decodeHtmlNumber] 未找到数字');
-    return null;
-  } catch (e) {
-    console.error('[MaoyanMovieList] 解码HTML数字失败:', e);
-    return null;
-  }
-}
-
-/**
  * 从API获取电影列表
  */
 export async function scrapeMaoyanMovieList(): Promise<MaoyanMovieListResponse> {
-  console.log('[MaoyanMovieList] 开始获取电影列表...');
 
   // 猫眼API地址
   const apiUrl = 'https://piaofang.maoyan.com/dashboard-ajax/movie?orderType=0&uuid=19b44ef545cc8-0ccff7381598eb8-26061a51-1fa400-19b44ef545cc8&timeStamp=1766929256758&User-Agent=TW96aWxsYS81LjAgKFdpbmRvd3MgTlQgMTAuMDsgV2luNjQ7IHg2NCkgQXBwbGVXZWJLaXQvNTM3LjM2IChLSFRNTCwgbGlrZSBHZWNrbykgQ2hyb21lLzE0My4wLjAuMCBTYWZhcmkvNTM3LjM2&index=522&channelId=40009&sVersion=2&signKey=39718a00c2508873a8b7ee438c6e213f&WuKongReady=h5';
@@ -219,22 +145,52 @@ async function parseMovieItem(item: any, fetchedAt: string): Promise<MaoyanMovie
       console.error(`[MaoyanMovieList] 获取电影详情失败 (${movieId}):`, error);
     }
 
-    const movie: MaoyanMovieItem = {
+    // 调试：打印原始数据
+    if (movieId === '78463' || movieId === '1142033') {
+      console.log(`[MaoyanMovieList] 原始数据 (${movieId}):`, JSON.stringify(item, null, 2));
+    }
+
+    // 提取所有字段，使用 null 代替 undefined，确保 JSON 序列化时包含所有字段
+    const movie: any = {
       movieId,
       title: movieInfo.movieName || '',
-      releaseInfo: movieInfo.releaseInfo || undefined,
-      boxOffice: todayBoxOffice,
+      releaseInfo: movieInfo.releaseInfo || null,
+      boxOffice: todayBoxOffice ?? null,
       boxOfficeUnit: '万',
-      sumBoxDesc: item.sumBoxDesc || undefined,
-      sumSplitBoxDesc: item.sumSplitBoxDesc || undefined,
-      boxRate: item.boxRate || undefined,
-      boxSplitRate: item.splitBoxRate || undefined,
-      showCount: item.showCount || undefined,
-      showCountRate: item.showCountRate || undefined,
-      avgSeatView: item.avgSeatView || undefined,
-      avgShowView: item.avgShowView || undefined,
+      sumBoxDesc: item.sumBoxDesc || null,
+      sumSplitBoxDesc: item.sumSplitBoxDesc || null,
+      boxRate: item.boxRate || null,
+      boxSplitRate: item.splitBoxRate || null,
+      showCount: item.showCount !== undefined && item.showCount !== null ? Number(item.showCount) : null,
+      showCountRate: item.showCountRate || null,
+      avgSeatView: item.avgSeatView || null,
+      avgShowView: item.avgShowView || null,
       fetchedAt,
     };
+
+    // 调试：打印原始数据（仅前两部电影）
+    if (movieId === '78463' || movieId === '1142033') {
+      console.log(`[MaoyanMovieList] 原始item数据 (${movieId}):`, {
+        sumBoxDesc: item.sumBoxDesc,
+        sumSplitBoxDesc: item.sumSplitBoxDesc,
+        boxRate: item.boxRate,
+        splitBoxRate: item.splitBoxRate,
+        showCount: item.showCount,
+        showCountRate: item.showCountRate,
+        avgSeatView: item.avgSeatView,
+        avgShowView: item.avgShowView,
+        movieInfo: item.movieInfo,
+        fullItem: item,
+      });
+      console.log(`[MaoyanMovieList] 构建后的movie对象 (${movieId}):`, movie);
+    }
+
+    return movie as MaoyanMovieItem;
+
+    // 调试：打印构建后的对象
+    if (movieId === '78463' || movieId === '1142033') {
+      console.log(`[MaoyanMovieList] 构建后的对象 (${movieId}):`, JSON.stringify(movie, null, 2));
+    }
 
     return movie;
   } catch (error) {
@@ -247,7 +203,6 @@ async function parseMovieItem(item: any, fetchedAt: string): Promise<MaoyanMovie
  * 获取电影详情
  */
 export async function scrapeMaoyanMovieDetail(movieId: string, showDate?: string): Promise<MaoyanMovieDetail | null> {
-  console.log(`[MaoyanMovieDetail] 开始获取电影明细: movieId=${movieId}`);
 
   // 如果没有提供日期，使用今天的日期
   if (!showDate) {
@@ -298,8 +253,6 @@ export async function scrapeMaoyanMovieDetail(movieId: string, showDate?: string
         })),
         fetchedAt: new Date().toISOString(),
       };
-
-      console.log(`[MaoyanMovieDetail] 成功获取电影明细: ${detail.name}`);
       return detail;
     } else {
       console.warn('[MaoyanMovieDetail] API返回格式不符合预期');

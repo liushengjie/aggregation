@@ -1,5 +1,5 @@
 // API基础URL - 根据环境自动切换
-const getApiBase = () => {
+export const getApiBase = () => {
     if (typeof window !== 'undefined') {
         // 浏览器环境
         const hostname = window.location.hostname;
@@ -216,6 +216,20 @@ export const maoyanApi = {
         const params = new URLSearchParams({ movieId });
         if (showDate) params.append('showDate', showDate);
         return fetchApi(`/hot-drama/maoyan/movie-detail?${params.toString()}`);
+    },
+
+    // 获取电影的B站解说
+    getBilibiliComments: (movieId: string, limit?: number) => {
+        const params = new URLSearchParams({ movieId });
+        if (limit) params.append('limit', limit.toString());
+        return fetchApi(`/hot-drama/maoyan/bilibili-comments?${params.toString()}`);
+    },
+
+    // 获取电影的小红书讨论
+    getXiaohongshuComments: (movieId: string, limit?: number) => {
+        const params = new URLSearchParams({ movieId });
+        if (limit) params.append('limit', limit.toString());
+        return fetchApi(`/hot-drama/maoyan/xiaohongshu-comments?${params.toString()}`);
     },
 };
 

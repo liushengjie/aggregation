@@ -42,6 +42,16 @@
       background: rgba(0, 0, 0, 0.2);
     }
 
+    /* Hide scrollbar for specific elements */
+    .scrollbar-hide {
+      -ms-overflow-style: none;  /* IE and Edge */
+      scrollbar-width: none;  /* Firefox */
+    }
+
+    .scrollbar-hide::-webkit-scrollbar {
+      display: none;  /* Chrome, Safari and Opera */
+    }
+
     .ipad-glass {
       background: rgba(255, 255, 255, 0.65);
       backdrop-filter: blur(20px) saturate(180%);

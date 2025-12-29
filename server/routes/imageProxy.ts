@@ -8,11 +8,16 @@ const router = express.Router();
  */
 router.get('/proxy', async (req, res) => {
   try {
-    const imageUrl = req.query.url as string;
+    let imageUrl = req.query.url as string;
     
     if (!imageUrl) {
       res.setHeader('Content-Type', 'application/json');
       return res.status(400).json({ error: 'Missing url parameter' });
+    }
+
+    // 如果URL没有协议，添加https://
+    if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
+      imageUrl = 'https://' + imageUrl;
     }
 
     // 验证 URL 是否为允许的域名（安全措施）
@@ -57,7 +62,13 @@ router.get('/proxy', async (req, res) => {
       'douyinpic.com',
     ];
     
-    const urlObj = new URL(imageUrl);
+    let urlObj: URL;
+    try {
+      urlObj = new URL(imageUrl);
+    } catch (error) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.status(400).json({ error: 'Invalid URL format' });
+    }
     const isAllowed = allowedDomains.some(domain => urlObj.hostname.includes(domain));
     
     if (!isAllowed) {

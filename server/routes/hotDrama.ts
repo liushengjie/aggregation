@@ -1,7 +1,8 @@
 import express from 'express';
-import { hotDramaOps, maoyanOps, type MaoyanMovie } from '../services/database.js';
+import { hotDramaOps, maoyanOps, type MaoyanMovie, searchOps } from '../services/database.js';
 import { refreshHotDramaData } from '../services/schedulers/hotDramaSchedulerService.js';
 import { scrapeMaoyanMovieList, scrapeMaoyanMovieDetail } from '../services/scrapers/hotDrama/maoyanScraper.js';
+import { getMaoyanMovieList } from '../services/hotDramaService.js';
 
 const router = express.Router();
 
@@ -153,13 +154,14 @@ maoyanRouter.post('/refresh', async (req, res) => {
 
 
 /**
- * 获取电影列表 - 从数据库读取
+ * 获取电影列表 - 通过服务层获取
  * GET /movie-list
  */
 maoyanRouter.get('/movie-list', async (req, res) => {
   try {
-    console.log('[Maoyan API] 获取电影列表 - 从数据库读取');
-    const movies = maoyanOps.getLatestMovieList.all() as MaoyanMovie[];
+    const forceRefresh = req.query.forceRefresh === 'true' || req.query.refresh === 'true';
+  
+    const movies = await getMaoyanMovieList(forceRefresh);
 
     res.json({
       success: true,
@@ -213,6 +215,270 @@ maoyanRouter.get('/movie-detail', async (req, res) => {
     }
   } catch (error: any) {
     console.error('[Maoyan API] 获取电影明细错误:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * 获取电影的B站解说
+ * GET /bilibili-comments?movieId=xxx&limit=20
+ */
+maoyanRouter.get('/bilibili-comments', async (req, res) => {
+  try {
+    const movieId = req.query.movieId as string;
+    const limit = parseInt(req.query.limit as string) || 20;
+
+    if (!movieId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameter: movieId'
+      });
+    }
+
+    console.log(`[Maoyan API] 获取B站解说: movieId=${movieId}, limit=${limit}`);
+    
+    // 获取电影标题用于相关性排序
+    const movieInfo = maoyanOps.getMovieById.get(movieId) as { title?: string } | undefined;
+    const movieTitle = movieInfo?.title || '';
+
+    const results = searchOps.getBilibiliSearchByMovieId.all(movieId, limit * 2) as Array<{
+      id: number;
+      search_keyword: string;
+      search_page: number;
+      result_id: string;
+      title: string;
+      desc: string | null;
+      author_name: string | null;
+      author_mid: string | null;
+      author_avatar: string | null;
+      author_profile_url: string | null;
+      cover: string | null;
+      duration: string | null;
+      publish_time: string | null;
+      url: string;
+      type: string;
+      stats_views: number;
+      stats_danmaku: number;
+      stats_likes: number;
+      stats_coins: number;
+      stats_favorites: number;
+      stats_shares: number;
+      stats_replies: number;
+      tags: string | null;
+      bvid: string | null;
+      aid: string | null;
+      fetched_at: string;
+    }>;
+
+    // 计算相关性分数并排序
+    const calculateRelevanceScore = (videoTitle: string, movieTitle: string): number => {
+      if (!movieTitle) return 0;
+      
+      const movieTitleLower = movieTitle.toLowerCase();
+      const videoTitleLower = videoTitle.toLowerCase();
+      
+      let score = 0;
+      
+      // 完全匹配标题（最高分）
+      if (videoTitleLower.includes(movieTitleLower)) {
+        score += 100;
+      }
+      
+      // 部分匹配（按匹配的字符数）
+      const movieWords = movieTitleLower.split(/[\s\-_]+/).filter(w => w.length > 1);
+      movieWords.forEach(word => {
+        if (videoTitleLower.includes(word)) {
+          score += word.length * 5;
+        }
+      });
+      
+      // 数字匹配（如"3"匹配"第三部"）
+      const movieNumbers = movieTitle.match(/\d+/g);
+      if (movieNumbers) {
+        movieNumbers.forEach(num => {
+          if (videoTitleLower.includes(num)) {
+            score += 10;
+          }
+        });
+      }
+      
+      return score;
+    };
+
+    const formattedResults = results
+      .map(item => ({
+        id: item.result_id,
+        title: item.title,
+        desc: item.desc,
+        author: {
+          name: item.author_name,
+          mid: item.author_mid,
+          avatar: item.author_avatar,
+          profileUrl: item.author_profile_url
+        },
+        cover: item.cover,
+        duration: item.duration,
+        publishTime: item.publish_time,
+        url: item.url,
+        type: item.type,
+        stats: {
+          views: item.stats_views,
+          danmaku: item.stats_danmaku,
+          likes: item.stats_likes,
+          coins: item.stats_coins,
+          favorites: item.stats_favorites,
+          shares: item.stats_shares,
+          replies: item.stats_replies
+        },
+        tags: item.tags ? JSON.parse(item.tags) : null,
+        bvid: item.bvid,
+        aid: item.aid,
+        relevanceScore: calculateRelevanceScore(item.title, movieTitle)
+      }))
+      .sort((a, b) => {
+        // 先按相关性排序，相关性相同时按播放量排序
+        if (b.relevanceScore !== a.relevanceScore) {
+          return b.relevanceScore - a.relevanceScore;
+        }
+        return b.stats.views - a.stats.views;
+      })
+      .slice(0, limit) // 只取前limit个
+      .map(({ relevanceScore, ...item }) => item); // 移除relevanceScore字段
+
+    res.json({
+      success: true,
+      data: {
+        total: formattedResults.length,
+        items: formattedResults
+      }
+    });
+  } catch (error: any) {
+    console.error('[Maoyan API] 获取B站解说错误:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch Bilibili comments'
+    });
+  }
+});
+
+/**
+ * 获取电影的小红书讨论
+ * GET /xiaohongshu-comments?movieId=xxx&limit=20
+ */
+maoyanRouter.get('/xiaohongshu-comments', async (req, res) => {
+  try {
+    const movieId = req.query.movieId as string;
+    const limit = parseInt(req.query.limit as string) || 20;
+
+    if (!movieId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameter: movieId'
+      });
+    }
+
+    console.log(`[Maoyan API] 获取小红书讨论: movieId=${movieId}, limit=${limit}`);
+    
+    // 获取电影标题用于相关性排序
+    const movieInfo = maoyanOps.getMovieById.get(movieId) as { title?: string } | undefined;
+    const movieTitle = movieInfo?.title || '';
+
+    const results = searchOps.getXiaohongshuSearchByMovieId.all(movieId, limit * 2) as Array<{
+      id: number;
+      search_keyword: string;
+      search_page: number;
+      result_id: string;
+      title: string;
+      desc: string | null;
+      author_name: string | null;
+      author_avatar: string | null;
+      author_user_id: string | null;
+      cover: string | null;
+      stats_likes: number;
+      stats_comments: number;
+      stats_collects: number;
+      type: string;
+      url: string;
+      fetched_at: string;
+    }>;
+
+    // 计算相关性分数并排序
+    const calculateRelevanceScore = (noteTitle: string, movieTitle: string): number => {
+      if (!movieTitle) return 0;
+      
+      const movieTitleLower = movieTitle.toLowerCase();
+      const noteTitleLower = noteTitle.toLowerCase();
+      
+      let score = 0;
+      
+      // 完全匹配标题（最高分）
+      if (noteTitleLower.includes(movieTitleLower)) {
+        score += 100;
+      }
+      
+      // 部分匹配（按匹配的字符数）
+      const movieWords = movieTitleLower.split(/[\s\-_]+/).filter(w => w.length > 1);
+      movieWords.forEach(word => {
+        if (noteTitleLower.includes(word)) {
+          score += word.length * 5;
+        }
+      });
+      
+      // 数字匹配
+      const movieNumbers = movieTitle.match(/\d+/g);
+      if (movieNumbers) {
+        movieNumbers.forEach(num => {
+          if (noteTitleLower.includes(num)) {
+            score += 10;
+          }
+        });
+      }
+      
+      return score;
+    };
+
+    const formattedResults = results
+      .map(item => ({
+        id: item.result_id,
+        title: item.title,
+        desc: item.desc,
+        author: {
+          name: item.author_name || '',
+          avatar: item.author_avatar,
+          userId: item.author_user_id
+        },
+        cover: item.cover,
+        stats: {
+          likes: item.stats_likes,
+          comments: item.stats_comments,
+          collects: item.stats_collects
+        },
+        type: item.type as 'normal' | 'video',
+        url: item.url,
+        relevanceScore: calculateRelevanceScore(item.title, movieTitle)
+      }))
+      .sort((a, b) => {
+        // 先按相关性排序，相关性相同时按点赞数排序
+        if (b.relevanceScore !== a.relevanceScore) {
+          return b.relevanceScore - a.relevanceScore;
+        }
+        return b.stats.likes - a.stats.likes;
+      })
+      .slice(0, limit) // 只取前limit个
+      .map(({ relevanceScore, ...item }) => item); // 移除relevanceScore字段
+
+    res.json({
+      success: true,
+      data: {
+        total: formattedResults.length,
+        items: formattedResults
+      }
+    });
+  } catch (error: any) {
+    console.error('[Maoyan API] 获取小红书讨论错误:', error);
     res.status(500).json({
       success: false,
       error: error.message
