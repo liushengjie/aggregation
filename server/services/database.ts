@@ -65,7 +65,7 @@ function initSchema() {
       UNIQUE(account_id, external_id)
     )
   `);
-  
+
   // Add category column if not exists (for existing databases)
   try {
     db.exec(`ALTER TABLE social_items ADD COLUMN category TEXT DEFAULT 'other'`);
@@ -114,7 +114,7 @@ function initSchema() {
       UNIQUE(platform, source_url, external_id)
     )
   `);
-  
+
   // Add category column if not exists (for existing databases)
   try {
     db.exec(`ALTER TABLE public_social_items ADD COLUMN category TEXT DEFAULT 'other'`);
@@ -134,7 +134,7 @@ function initSchema() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_public_social_items_source_label ON public_social_items(source_label)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_public_social_items_fetched_at ON public_social_items(fetched_at)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_public_social_items_category ON public_social_items(category)`);
-  
+
   // Create indexes for social_items category
   db.exec(`CREATE INDEX IF NOT EXISTS idx_social_items_category ON social_items(category)`);
 
@@ -177,7 +177,7 @@ function initSchema() {
       UNIQUE(repo_full_name, period, language_filter)
     )
   `);
-  
+
   // Create indexes
   db.exec(`CREATE INDEX IF NOT EXISTS idx_opensource_trending_period ON opensource_trending(period)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_opensource_trending_language ON opensource_trending(language_filter)`);
@@ -225,19 +225,25 @@ function initSchema() {
     )
   `);
 
-  // Maoyan box office table (票房)
+  // Maoyan movie list table (电影列表) - 保留现有数据
   db.exec(`
-    CREATE TABLE IF NOT EXISTS maoyan_box_office (
+    CREATE TABLE IF NOT EXISTS maoyan_movie_list (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      rank INTEGER NOT NULL,
       movie_id TEXT NOT NULL,
       title TEXT NOT NULL,
-      box_office REAL DEFAULT 0,
-      box_office_unit TEXT DEFAULT '万',
-      release_date TEXT,
-      poster TEXT,
-      trend TEXT,
-      fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      release_info TEXT,
+      box_office REAL,
+      box_office_unit TEXT,
+      sum_box_desc TEXT,
+      sum_split_box_desc TEXT,
+      box_rate TEXT,
+      box_split_rate TEXT,
+      show_count INTEGER,
+      show_count_rate TEXT,
+      avg_seat_view TEXT,
+      avg_show_view TEXT,
+      fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(movie_id)
     )
   `);
 
@@ -270,7 +276,6 @@ function initSchema() {
   `);
 
   // Create indexes for maoyan tables
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_maoyan_box_office_fetched_at ON maoyan_box_office(fetched_at DESC)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_maoyan_calendar_fetched_at ON maoyan_calendar(fetched_at DESC)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_maoyan_rankings_category ON maoyan_rankings(category)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_maoyan_rankings_fetched_at ON maoyan_rankings(fetched_at DESC)`);
@@ -382,7 +387,7 @@ function migrateHotDramasTable() {
       // SQLite doesn't support ALTER TABLE to modify UNIQUE constraints
       // So we need to recreate the table
       db.pragma('foreign_keys = OFF');
-      
+
       try {
         // Create new table with correct structure
         db.exec(`
@@ -427,7 +432,7 @@ function migrateHotDramasTable() {
         // Try to clean up
         try {
           db.exec(`DROP TABLE IF EXISTS hot_dramas_new`);
-        } catch {}
+        } catch { }
       } finally {
         db.pragma('foreign_keys = ON');
       }
@@ -549,7 +554,7 @@ export const itemOps = {
     ORDER BY fetched_at DESC, id DESC
     LIMIT ? OFFSET ?
   `),
-  
+
   findByUserAndCategory: db.prepare(`
     SELECT id, account_id, platform, external_id, title, author, thumbnail, url, content, likes, comments, shares, views, tags, category, fetched_at FROM (
       SELECT si.*, ROW_NUMBER() OVER (PARTITION BY pa.user_id, si.title, si.platform ORDER BY si.fetched_at DESC, si.id DESC) as rn
@@ -560,7 +565,7 @@ export const itemOps = {
     ORDER BY fetched_at DESC, id DESC
     LIMIT ? OFFSET ?
   `),
-  
+
   findByUserPlatformAndCategory: db.prepare(`
     SELECT id, account_id, platform, external_id, title, author, thumbnail, url, content, likes, comments, shares, views, tags, category, fetched_at FROM (
       SELECT si.*, ROW_NUMBER() OVER (PARTITION BY pa.user_id, si.title, si.platform ORDER BY si.fetched_at DESC, si.id DESC) as rn
@@ -571,13 +576,13 @@ export const itemOps = {
     ORDER BY fetched_at DESC, id DESC
     LIMIT ? OFFSET ?
   `),
-  
+
   countByUserAndCategory: db.prepare(`
     SELECT COUNT(DISTINCT si.title || '|' || si.platform) as count FROM social_items si
     JOIN platform_accounts pa ON si.account_id = pa.id
     WHERE pa.user_id = ? AND si.category = ?
   `),
-  
+
   countByUserPlatformAndCategory: db.prepare(`
     SELECT COUNT(DISTINCT si.title) as count FROM social_items si
     JOIN platform_accounts pa ON si.account_id = pa.id
@@ -1022,19 +1027,75 @@ export const analyticsOps = {
   `),
 };
 
+// Maoyan data type definitions
+export interface MaoyanMovie {
+  movieId: string;
+  title: string;
+  releaseInfo: string | null;
+  boxOffice: number | null;
+  boxOfficeUnit: string | null;
+  sumBoxDesc: string | null;
+  sumSplitBoxDesc: string | null;
+  boxRate: string | null;
+  boxSplitRate: string | null;
+  showCount: number | null;
+  showCountRate: string | null;
+  avgSeatView: string | null;
+  avgShowView: string | null;
+  fetchedAt: string;
+}
+
+export interface MaoyanCalendar {
+  movieId: string;
+  title: string;
+  releaseDate: string | null;
+  poster: string | null;
+  wantCount: number;
+}
+
+export interface MaoyanRanking {
+  rank: number;
+  itemId: string;
+  title: string;
+  score: number;
+  poster: string | null;
+  info: string | null;
+  category: string;
+}
+
 // Maoyan data operations
 export const maoyanOps = {
-  // Box Office operations
-  deleteAllBoxOffice: db.prepare(`DELETE FROM maoyan_box_office`),
-  insertBoxOffice: db.prepare(`
-    INSERT INTO maoyan_box_office (rank, movie_id, title, box_office, box_office_unit, release_date, poster, trend, fetched_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  // Movie List operations
+  deleteAllMovieList: db.prepare(`DELETE FROM maoyan_movie_list`),
+  insertMovie: db.prepare(`
+    INSERT OR REPLACE INTO maoyan_movie_list 
+    (movie_id, title, release_info, box_office, box_office_unit, sum_box_desc, sum_split_box_desc, box_rate, box_split_rate, show_count, show_count_rate, avg_seat_view, avg_show_view, fetched_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `),
-  getLatestBoxOffice: db.prepare(`
-    SELECT rank, movie_id as movieId, title, box_office as boxOffice, box_office_unit as boxOfficeUnit, release_date as releaseDate, poster, trend
-    FROM maoyan_box_office
-    ORDER BY fetched_at DESC, rank ASC
-    LIMIT 50
+  getLatestMovieList: db.prepare(`
+    SELECT movie_id as movieId, title, release_info as releaseInfo, 
+           box_office as boxOffice, box_office_unit as boxOfficeUnit, 
+           sum_box_desc as sumBoxDesc, sum_split_box_desc as sumSplitBoxDesc,
+           box_rate as boxRate, box_split_rate as boxSplitRate,
+           show_count as showCount, show_count_rate as showCountRate,
+           avg_seat_view as avgSeatView, avg_show_view as avgShowView,
+           fetched_at as fetchedAt
+    FROM maoyan_movie_list
+    ORDER BY fetched_at DESC
+    LIMIT 100
+  `),
+  getMovieById: db.prepare(`
+    SELECT movie_id as movieId, title, release_info as releaseInfo, 
+           box_office as boxOffice, box_office_unit as boxOfficeUnit,
+           sum_box_desc as sumBoxDesc, sum_split_box_desc as sumSplitBoxDesc,
+           box_rate as boxRate, box_split_rate as boxSplitRate,
+           show_count as showCount, show_count_rate as showCountRate,
+           avg_seat_view as avgSeatView, avg_show_view as avgShowView,
+           fetched_at as fetchedAt
+    FROM maoyan_movie_list
+    WHERE movie_id = ?
+    ORDER BY fetched_at DESC
+    LIMIT 1
   `),
 
   // Calendar operations
@@ -1070,12 +1131,12 @@ export const maoyanOps = {
     ORDER BY fetched_at DESC, category, rank ASC
     LIMIT 150
   `),
-  
+
   // Get latest fetch time
   getLatestFetchTime: db.prepare(`
     SELECT MAX(fetched_at) as latest_fetch_time
     FROM (
-      SELECT fetched_at FROM maoyan_box_office
+      SELECT fetched_at FROM maoyan_movie_list
       UNION ALL
       SELECT fetched_at FROM maoyan_calendar
       UNION ALL

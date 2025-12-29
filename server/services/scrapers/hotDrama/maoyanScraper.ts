@@ -1,483 +1,312 @@
-import { chromium, Browser, Page } from 'playwright';
+/**
+ * 猫眼电影列表爬虫
+ * 从猫眼专业版API获取电影列表数据
+ */
 
-// 猫眼数据类型定义
-export interface MaoyanBoxOffice {
-  rank: number;
+// 电影列表项接口
+export interface MaoyanMovieItem {
   movieId: string;
   title: string;
-  boxOffice: number;
-  boxOfficeUnit: string;
-  releaseDate: string;
-  poster?: string;
-  trend?: 'up' | 'down' | 'same';
+  releaseInfo?: string;
+  boxOffice?: number;
+  boxOfficeUnit?: string;
+  sumBoxDesc?: string;
+  sumSplitBoxDesc?: string;
+  boxRate?: string;
+  boxSplitRate?: string;
+  showCount?: number;
+  showCountRate?: string;
+  avgSeatView?: string;
+  avgShowView?: string;
+  fetchedAt: string;
 }
 
-export interface MaoyanCalendarMovie {
+// 电影列表响应接口
+export interface MaoyanMovieListResponse {
+  movies: MaoyanMovieItem[];
+  total: number;
+  fetchedAt: string;
+}
+
+// 电影详情接口
+export interface MaoyanMovieDetail {
   movieId: string;
-  title: string;
-  releaseDate: string;
-  poster?: string;
-  wantCount?: number;
-}
-
-export interface MaoyanRankingItem {
-  rank: number;
-  itemId: string;
-  title: string;
-  score: number;
-  poster?: string;
-  info?: string;
-  category: 'tv' | 'webSeries' | 'variety';
-}
-
-export interface MaoyanData {
-  boxOffice: MaoyanBoxOffice[];
-  calendar: MaoyanCalendarMovie[];
-  tvRanking: MaoyanRankingItem[];
-  webSeriesRanking: MaoyanRankingItem[];
-  varietyRanking: MaoyanRankingItem[];
+  name: string;
+  category?: string;
+  imgUrl?: string;
+  releaseInfo?: string;
+  boxTrends: Array<{
+    box: number;
+    boxDesc: string;
+    date: number;
+    releaseDay: boolean;
+  }>;
   fetchedAt: string;
 }
 
 /**
- * 从猫眼专业版抓取网播热度数据
+ * 猫眼自定义字体字符映射表
+ * 猫眼使用自定义字体来混淆数字，需要建立映射关系
  */
-async function scrapeWebHeat(page: Page, type: 'tv' | 'webSeries' | 'variety'): Promise<MaoyanRankingItem[]> {
-  const typeIndex = { tv: 1, webSeries: 2, variety: 3 };
-  
+const MAOYAN_FONT_MAP: { [key: string]: string } = {
+  '\ue3ec': '0',
+  '\uedba': '1',
+  '\ued30': '2',
+  '\uef28': '3',
+  '\uf11c': '4',
+  '\ueb19': '5',
+  '\uf3e8': '6',
+  '\uf7d2': '7',
+  '\uf70e': '8',
+  '\uf7b3': '9',
+};
+
+/**
+ * 解码猫眼自定义字体数字
+ */
+function decodeMaoyanFont(text: string): string {
+  let result = text;
+  for (const [customChar, digit] of Object.entries(MAOYAN_FONT_MAP)) {
+    result = result.split(customChar).join(digit);
+  }
+  return result;
+}
+
+/**
+ * 解码HTML实体编码的数字
+ */
+function decodeHtmlNumber(htmlNum: string): number | null {
+  if (!htmlNum) return null;
+
   try {
-    // 点击对应的 tab
-    const tabSelector = `.webheat-nav span:nth-child(${typeIndex[type]})`;
-    await page.click(tabSelector).catch(() => {});
-    await page.waitForTimeout(1500);
-    
-    const items = await page.evaluate((category) => {
-      const result: any[] = [];
-      
-      // 从表格行提取数据
-      document.querySelectorAll('.dashboard-table tbody tr, table tbody tr').forEach((row, i) => {
-        if (i >= 10 || result.length >= 10) return;
-        
-        const cells = row.querySelectorAll('td');
-        if (cells.length < 2) return;
-        
-        // 第一列是排名，第二列是剧名
-        const rankText = cells[0]?.textContent?.trim() || '';
-        const rank = parseInt(rankText.replace(/\D/g, '')) || (i + 1);
-        
-        // 剧名可能在第二列
-        let title = '';
-        let heat = '';
-        
-        // 尝试从不同位置获取标题
-        const titleCell = cells[1] || cells[0];
-        const titleEl = titleCell?.querySelector('.movie-name, .name, a, span') || titleCell;
-        title = titleEl?.textContent?.trim() || '';
-        
-        // 清理标题（移除多余信息）
-        title = title.split(/多平台|上线|播放/)[0].trim();
-        title = title.replace(/^\d+/, '').trim();
-        
-        // 热度值
-        if (cells.length >= 3) {
-          heat = cells[2]?.textContent?.trim() || '';
-        }
-        
-        if (title && title.length > 1 && title.length < 50) {
-          result.push({
-            rank: result.length + 1,
-            itemId: `${category}_${result.length}`,
-            title,
-            score: parseFloat(heat?.replace(/[^\d.]/g, '') || '0') || 0,
-            poster: '',
-            info: heat,
-            category,
-          });
-        }
-      });
-      
+    console.log('[decodeHtmlNumber] 原始HTML实体:', htmlNum);
+
+    // HTML实体格式：&#xXXXX; (十六进制) 或 &#DDDD; (十进制)
+    let decoded = htmlNum;
+
+    // 解码十六进制实体 (&#xXXXX;)
+    decoded = decoded.replace(/&#x([0-9a-fA-F]+);/g, (match, hex) => {
+      const charCode = parseInt(hex, 16);
+      return String.fromCharCode(charCode);
+    });
+
+    // 解码十进制实体 (&#DDDD;)
+    decoded = decoded.replace(/&#(\d+);/g, (match, dec) => {
+      const charCode = parseInt(dec, 10);
+      return String.fromCharCode(charCode);
+    });
+
+    console.log('[decodeHtmlNumber] HTML解码后:', decoded, '字符码:', Array.from(decoded).map(c => c.charCodeAt(0).toString(16)));
+
+    // 应用猫眼自定义字体映射
+    const fontDecoded = decodeMaoyanFont(decoded);
+    console.log('[decodeHtmlNumber] 字体映射后:', fontDecoded);
+
+    // 提取数字（包括小数点）
+    const match = fontDecoded.match(/[\d.]+/);
+    if (match) {
+      const result = parseFloat(match[0]);
+      console.log('[decodeHtmlNumber] 提取的数字:', result);
       return result;
-    }, type);
-    
-    return items;
+    }
+    console.log('[decodeHtmlNumber] 未找到数字');
+    return null;
   } catch (e) {
-    console.error(`[Maoyan] Web heat ${type} error:`, e);
-    return [];
+    console.error('[MaoyanMovieList] 解码HTML数字失败:', e);
+    return null;
   }
 }
 
 /**
- * 主抓取函数
+ * 从API获取电影列表
  */
-export async function scrapeMaoyanData(): Promise<MaoyanData> {
-  console.log('[Maoyan] Starting data scrape...');
-  
-  let browser: Browser | null = null;
-  
-  const result: MaoyanData = {
-    boxOffice: [],
-    calendar: [],
-    tvRanking: [],
-    webSeriesRanking: [],
-    varietyRanking: [],
+export async function scrapeMaoyanMovieList(): Promise<MaoyanMovieListResponse> {
+  console.log('[MaoyanMovieList] 开始获取电影列表...');
+
+  // 猫眼API地址
+  const apiUrl = 'https://piaofang.maoyan.com/dashboard-ajax/movie?orderType=0&uuid=19b44ef545cc8-0ccff7381598eb8-26061a51-1fa400-19b44ef545cc8&timeStamp=1766929256758&User-Agent=TW96aWxsYS81LjAgKFdpbmRvd3MgTlQgMTAuMDsgV2luNjQ7IHg2NCkgQXBwbGVXZWJLaXQvNTM3LjM2IChLSFRNTCwgbGlrZSBHZWNrbykgQ2hyb21lLzE0My4wLjAuMCBTYWZhcmkvNTM3LjM2&index=522&channelId=40009&sVersion=2&signKey=39718a00c2508873a8b7ee438c6e213f&WuKongReady=h5';
+
+  const result: MaoyanMovieListResponse = {
+    movies: [],
+    total: 0,
     fetchedAt: new Date().toISOString(),
   };
-  
+
   try {
-    browser = await chromium.launch({ headless: true });
-    
-    // 移动端 context 用于猫眼移动版
-    const mobileContext = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
-      viewport: { width: 375, height: 812 },
-      locale: 'zh-CN',
+    const headers: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      'Referer': 'https://piaofang.maoyan.com/',
+    };
+
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers,
     });
-    
-    const mobilePage = await mobileContext.newPage();
-    
-    // 1. 先访问猫眼首页建立 session
-    console.log('[Maoyan] Establishing session...');
-    await mobilePage.goto('https://m.maoyan.com/', { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await mobilePage.waitForTimeout(1500);
-    
-    // 2. 抓取即将上映
-    console.log('[Maoyan] Fetching coming movies...');
-    try {
-      const comingData = await mobilePage.evaluate(async () => {
-        try {
-          const res = await fetch('https://m.maoyan.com/ajax/comingList?ci=1&limit=10&token=', {
-            headers: { 'Accept': 'application/json' }
-          });
-          return await res.json();
-        } catch {
-          return null;
-        }
-      });
-      
-      if (comingData?.coming) {
-        result.calendar = comingData.coming.slice(0, 10).map((item: any) => ({
-          movieId: item.id?.toString() || '',
-          title: item.nm || '',
-          releaseDate: item.comingTitle || item.rt || '',
-          poster: item.img?.replace(/w\.h/, '128.180') || '',
-          wantCount: item.wish || 0,
-        }));
-        console.log(`[Maoyan] Got ${result.calendar.length} coming movies`);
-      }
-    } catch (e) {
-      console.error('[Maoyan] Coming movies error:', e);
+
+    if (!response.ok) {
+      console.error(`[MaoyanMovieList] API请求失败: ${response.status} ${response.statusText}`);
+      return result;
     }
-    
-    // 3. 抓取正在热映电影 - 先尝试移动端API
-    console.log('[Maoyan] Fetching hot movies...');
-    try {
-      const hotData = await mobilePage.evaluate(async () => {
-        try {
-          const res = await fetch('https://m.maoyan.com/ajax/movieOnInfoList?token=', {
-            headers: { 'Accept': 'application/json' }
-          });
-          return await res.json();
-        } catch {
-          return null;
-        }
-      });
-      
-      if (hotData?.movieList) {
-        result.boxOffice = hotData.movieList.slice(0, 10).map((item: any, index: number) => ({
-          rank: index + 1,
-          movieId: item.id?.toString() || `hot_${index}`,
-          title: item.nm || '',
-          boxOffice: parseFloat(item.boxInfo?.replace(/[^\d.]/g, '') || '0') || 0,
-          boxOfficeUnit: item.boxInfo?.includes('亿') ? '亿' : '万',
-          releaseDate: item.rt || '',
-          poster: item.img?.replace(/w\.h/, '128.180') || '',
-          trend: 'same' as const,
-        }));
-        console.log(`[Maoyan] Got ${result.boxOffice.length} hot movies from mobile API`);
-      }
-    } catch (e) {
-      console.error('[Maoyan] Hot movies error:', e);
+
+    const json = await response.json();
+
+    if (json.movieList && json.movieList.list && Array.isArray(json.movieList.list)) {
+      result.movies = await parseMovieList(json.movieList.list);
+      result.total = result.movies.length;
+      console.log(`[MaoyanMovieList] 成功获取 ${result.total} 部电影`);
+    } else {
+      console.warn('[MaoyanMovieList] API返回格式不符合预期');
     }
-    
-    await mobileContext.close();
-    
-    // 4. 使用桌面端抓取猫眼专业版
-    console.log('[Maoyan] Fetching from piaofang...');
-    
-    const desktopContext = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      viewport: { width: 1920, height: 1080 },
-      locale: 'zh-CN',
-    });
-    
-    const desktopPage = await desktopContext.newPage();
-    
-    // 4.1 先抓取票房数据
-    console.log('[Maoyan] Fetching box office from piaofang...');
-    try {
-      await desktopPage.goto('https://piaofang.maoyan.com/dashboard', { 
-        waitUntil: 'networkidle', 
-        timeout: 30000 
-      });
-      await desktopPage.waitForTimeout(2000);
-      
-      const boxOfficeItems = await desktopPage.evaluate(() => {
-        const items: any[] = [];
-        document.querySelectorAll('.dashboard-table tbody tr, table tbody tr').forEach((row, i) => {
-          if (i >= 10 || items.length >= 10) return;
-          
-          const cells = row.querySelectorAll('td');
-          if (cells.length < 3) return;
-          
-          // 第一列格式: "01阿凡达3上映4天  4.30亿"
-          const firstCell = cells[0]?.textContent?.trim() || '';
-          const match = firstCell.match(/^(\d+)([^\d上映]+)(?:上映(\d+)天)?\s*([\d.]+)(亿|万)?/);
-          
-          if (match) {
-            const title = match[2].trim();
-            const days = match[3] ? parseInt(match[3]) : 0;
-            const boxOffice = parseFloat(match[4]) || 0;
-            const unit = match[5] || '万';
-            
-            // 第二列是票房占比
-            const shareText = cells[2]?.textContent?.trim() || '';
-            const share = parseFloat(shareText.replace('%', '')) || 0;
-            
-            if (title && title.length > 1) {
-              items.push({
-                rank: items.length + 1,
-                movieId: `box_${items.length}`,
-                title,
-                boxOffice: unit === '亿' ? boxOffice * 10000 : boxOffice,
-                boxOfficeUnit: unit,
-                releaseDate: days > 0 ? `上映${days}天` : '',
-                poster: '',
-                trend: 'same',
-                share, // 票房占比
-              });
-            }
-          }
-        });
-        return items;
-      });
-      
-      if (boxOfficeItems.length > 0) {
-        // 合并专业版数据（保留海报信息）
-        result.boxOffice = boxOfficeItems.map((item, i) => {
-          const existing = result.boxOffice[i];
-          return {
-            ...item,
-            poster: existing?.poster || '',
-          };
-        });
-        console.log(`[Maoyan] Got ${result.boxOffice.length} box office items from piaofang`);
-      }
-    } catch (e) {
-      console.error('[Maoyan] Box office from piaofang error:', e);
-    }
-    
-    // 4.2 抓取网播热度
-    try {
-      await desktopPage.goto('https://piaofang.maoyan.com/dashboard/web-heat', { 
-        waitUntil: 'networkidle', 
-        timeout: 30000 
-      });
-      await desktopPage.waitForTimeout(2000);
-      
-      // 抓取电视剧（默认显示的是电视剧+网络剧，需要点击电视剧 tab）
-      console.log('[Maoyan] Fetching TV ranking...');
-      try {
-        // 点击"电视剧" tab
-        await desktopPage.click('.webheat-nav span:nth-child(2)').catch(() => {});
-        await desktopPage.waitForTimeout(1500);
-        
-        const tvItems = await desktopPage.evaluate(() => {
-          const items: any[] = [];
-          // 平台名称列表
-          const platforms = ['爱奇艺', '腾讯视频', '优酷', '芒果TV', '哔哩哔哩', 'B站', '搜狐视频', '乐视', 'Netflix', '多平台'];
-          
-          document.querySelectorAll('.dashboard-table tbody tr, table tbody tr').forEach((row, i) => {
-            if (i >= 10 || items.length >= 10) return;
-            
-            const cells = row.querySelectorAll('td');
-            if (cells.length < 2) return;
-            
-            // 第一列格式: "01老舅多平台播放  上线8天" 或 "03时差一万公里芒果TV独播  上线22天"
-            const firstCell = cells[0]?.textContent?.trim() || '';
-            
-            // 先去掉排名数字
-            let text = firstCell.replace(/^\d+/, '').trim();
-            
-            // 去掉 "上线X天" 及之后的内容
-            text = text.split(/\s+上线/)[0].trim();
-            
-            // 去掉 "独播" 或 "播放" 及之后的内容
-            text = text.split(/独播|播放/)[0].trim();
-            
-            // 去掉平台名称
-            let title = text;
-            for (const platform of platforms) {
-              title = title.replace(platform, '');
-            }
-            title = title.trim();
-            
-            // 第二列是热度
-            const heat = cells[1]?.textContent?.trim() || '';
-            
-            // 第三列是播放量
-            const playCount = cells[2]?.textContent?.trim() || '';
-            
-            if (title && title.length > 1 && title.length < 50) {
-              items.push({
-                rank: items.length + 1,
-                itemId: `tv_${items.length}`,
-                title,
-                score: parseFloat(heat?.replace(/[^\d.]/g, '') || '0') || 0,
-                info: playCount && playCount !== '--' && !playCount.includes('关闭') ? playCount : heat,
-                category: 'tv',
-              });
-            }
-          });
-          return items;
-        });
-        
-        if (tvItems.length > 0) {
-          result.tvRanking = tvItems;
-          console.log(`[Maoyan] Got ${result.tvRanking.length} TV items`);
-        }
-      } catch (e) {
-        console.error('[Maoyan] TV ranking error:', e);
-      }
-      
-      // 抓取网络剧
-      console.log('[Maoyan] Fetching web series ranking...');
-      try {
-        await desktopPage.click('.webheat-nav span:nth-child(3)').catch(() => {});
-        await desktopPage.waitForTimeout(1500);
-        
-        const webItems = await desktopPage.evaluate(() => {
-          const items: any[] = [];
-          const platforms = ['爱奇艺', '腾讯视频', '优酷', '芒果TV', '哔哩哔哩', 'B站', '搜狐视频', '乐视', 'Netflix', '多平台'];
-          
-          document.querySelectorAll('.dashboard-table tbody tr, table tbody tr').forEach((row, i) => {
-            if (i >= 10 || items.length >= 10) return;
-            
-            const cells = row.querySelectorAll('td');
-            if (cells.length < 2) return;
-            
-            const firstCell = cells[0]?.textContent?.trim() || '';
-            
-            let text = firstCell.replace(/^\d+/, '').trim();
-            text = text.split(/\s+上线/)[0].trim();
-            text = text.split(/独播|播放/)[0].trim();
-            
-            let title = text;
-            for (const platform of platforms) {
-              title = title.replace(platform, '');
-            }
-            title = title.trim();
-            
-            const heat = cells[1]?.textContent?.trim() || '';
-            const playCount = cells[2]?.textContent?.trim() || '';
-            
-            if (title && title.length > 1 && title.length < 50) {
-              items.push({
-                rank: items.length + 1,
-                itemId: `web_${items.length}`,
-                title,
-                score: parseFloat(heat?.replace(/[^\d.]/g, '') || '0') || 0,
-                info: playCount && playCount !== '--' && !playCount.includes('关闭') ? playCount : heat,
-                category: 'webSeries',
-              });
-            }
-          });
-          return items;
-        });
-        
-        if (webItems.length > 0) {
-          result.webSeriesRanking = webItems;
-          console.log(`[Maoyan] Got ${result.webSeriesRanking.length} web series items`);
-        }
-      } catch (e) {
-        console.error('[Maoyan] Web series error:', e);
-      }
-      
-      // 抓取综艺
-      console.log('[Maoyan] Fetching variety ranking...');
-      try {
-        await desktopPage.click('.webheat-nav span:nth-child(4)').catch(() => {});
-        await desktopPage.waitForTimeout(1500);
-        
-        const varietyItems = await desktopPage.evaluate(() => {
-          const items: any[] = [];
-          const platforms = ['爱奇艺', '腾讯视频', '优酷', '芒果TV', '哔哩哔哩', 'B站', '搜狐视频', '乐视', 'Netflix', '多平台'];
-          
-          document.querySelectorAll('.dashboard-table tbody tr, table tbody tr').forEach((row, i) => {
-            if (i >= 10 || items.length >= 10) return;
-            
-            const cells = row.querySelectorAll('td');
-            if (cells.length < 2) return;
-            
-            const firstCell = cells[0]?.textContent?.trim() || '';
-            
-            // 先去掉排名数字
-            let text = firstCell.replace(/^\d+/, '').trim();
-            
-            // 去掉 "上线X天" 及之后的内容
-            text = text.split(/\s+上线/)[0].trim();
-            
-            // 去掉 "独播" 或 "播放" 及之后的内容
-            text = text.split(/独播|播放/)[0].trim();
-            
-            // 去掉平台名称
-            let title = text;
-            for (const platform of platforms) {
-              title = title.replace(platform, '');
-            }
-            title = title.trim();
-            
-            const heat = cells[1]?.textContent?.trim() || '';
-            const playCount = cells[2]?.textContent?.trim() || '';
-            
-            if (title && title.length > 1 && title.length < 50) {
-              items.push({
-                rank: items.length + 1,
-                itemId: `var_${items.length}`,
-                title,
-                score: parseFloat(heat?.replace(/[^\d.]/g, '') || '0') || 0,
-                info: playCount && playCount !== '--' && !playCount.includes('关闭') ? playCount : heat,
-                category: 'variety',
-              });
-            }
-          });
-          return items;
-        });
-        
-        if (varietyItems.length > 0) {
-          result.varietyRanking = varietyItems;
-          console.log(`[Maoyan] Got ${result.varietyRanking.length} variety items`);
-        }
-      } catch (e) {
-        console.error('[Maoyan] Variety error:', e);
-      }
-      
-    } catch (e) {
-      console.error('[Maoyan] Piaofang web-heat error:', e);
-    }
-    
-    await desktopContext.close();
-    
-    const total = result.boxOffice.length + result.calendar.length + 
-                  result.tvRanking.length + result.webSeriesRanking.length + result.varietyRanking.length;
-    console.log(`[Maoyan] Scrape complete: box=${result.boxOffice.length}, calendar=${result.calendar.length}, tv=${result.tvRanking.length}, web=${result.webSeriesRanking.length}, variety=${result.varietyRanking.length}, total=${total}`);
-    
-  } catch (error) {
-    console.error('[Maoyan] Scrape error:', error);
-  } finally {
-    if (browser) {
-      await browser.close();
+  } catch (error: any) {
+    console.error('[MaoyanMovieList] 获取电影列表失败:', error.message);
+  }
+
+  return result;
+}
+
+/**
+ * 解析电影列表数据并获取详情
+ */
+async function parseMovieList(data: any[]): Promise<MaoyanMovieItem[]> {
+  const movies: MaoyanMovieItem[] = [];
+  const fetchedAt = new Date().toISOString();
+
+  // 限制并发数量，避免请求过快
+  const concurrency = 5;
+  for (let i = 0; i < data.length; i += concurrency) {
+    const batch = data.slice(i, i + concurrency);
+    const batchResults = await Promise.all(
+      batch.map(item => parseMovieItem(item, fetchedAt))
+    );
+    movies.push(...batchResults.filter(m => m !== null) as MaoyanMovieItem[]);
+
+    // 每批次之间稍微延迟
+    if (i + concurrency < data.length) {
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
   }
-  
-  return result;
+
+  return movies;
+}
+
+/**
+ * 解析单个电影项并获取详情
+ */
+async function parseMovieItem(item: any, fetchedAt: string): Promise<MaoyanMovieItem | null> {
+  try {
+    const movieInfo = item.movieInfo || {};
+    const movieId = movieInfo.movieId?.toString();
+
+    if (!movieId || !movieInfo.movieName) {
+      return null;
+    }
+
+    // 获取电影详情以获取明文的今日票房
+    let todayBoxOffice: number | undefined = undefined;
+    try {
+      const detail = await scrapeMaoyanMovieDetail(movieId);
+      if (detail && detail.boxTrends && detail.boxTrends.length > 0) {
+        // 获取最新一天的票房数据
+        const latestTrend = detail.boxTrends[detail.boxTrends.length - 1];
+        todayBoxOffice = latestTrend.box; // 单位：元，需要转换为万
+        if (todayBoxOffice) {
+          todayBoxOffice = todayBoxOffice / 10000; // 转换为万元
+        }
+      }
+    } catch (error) {
+      console.error(`[MaoyanMovieList] 获取电影详情失败 (${movieId}):`, error);
+    }
+
+    const movie: MaoyanMovieItem = {
+      movieId,
+      title: movieInfo.movieName || '',
+      releaseInfo: movieInfo.releaseInfo || undefined,
+      boxOffice: todayBoxOffice,
+      boxOfficeUnit: '万',
+      sumBoxDesc: item.sumBoxDesc || undefined,
+      sumSplitBoxDesc: item.sumSplitBoxDesc || undefined,
+      boxRate: item.boxRate || undefined,
+      boxSplitRate: item.splitBoxRate || undefined,
+      showCount: item.showCount || undefined,
+      showCountRate: item.showCountRate || undefined,
+      avgSeatView: item.avgSeatView || undefined,
+      avgShowView: item.avgShowView || undefined,
+      fetchedAt,
+    };
+
+    return movie;
+  } catch (error) {
+    console.error('[MaoyanMovieList] 解析单条电影数据失败:', error);
+    return null;
+  }
+}
+
+/**
+ * 获取电影详情
+ */
+export async function scrapeMaoyanMovieDetail(movieId: string, showDate?: string): Promise<MaoyanMovieDetail | null> {
+  console.log(`[MaoyanMovieDetail] 开始获取电影明细: movieId=${movieId}`);
+
+  // 如果没有提供日期，使用今天的日期
+  if (!showDate) {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    showDate = `${year}${month}${day}`;
+  }
+
+  const apiUrl = `https://piaofang.maoyan.com/dashboard/ajax-moviedetail?showDate=${showDate}&movieId=${movieId}&WuKongReady=h5`;
+
+  try {
+    const headers: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      'Referer': 'https://piaofang.maoyan.com/',
+    };
+
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!response.ok) {
+      console.error(`[MaoyanMovieDetail] API请求失败: ${response.status} ${response.statusText}`);
+      return null;
+    }
+
+    const json = await response.json();
+
+    if (json.success && json.data) {
+      const data = json.data;
+      const movieInfo = data.movieInfo || {};
+
+      const detail: MaoyanMovieDetail = {
+        movieId: movieInfo.movieId?.toString() || movieId,
+        name: movieInfo.name || '',
+        category: movieInfo.category || undefined,
+        imgUrl: movieInfo.imgUrl || undefined,
+        releaseInfo: movieInfo.releaseInfo || undefined,
+        boxTrends: (data.boxTrends || []).map((trend: any) => ({
+          box: trend.box || 0,
+          boxDesc: trend.boxDesc || '',
+          date: trend.date || 0,
+          releaseDay: trend.releaseDay || false,
+        })),
+        fetchedAt: new Date().toISOString(),
+      };
+
+      console.log(`[MaoyanMovieDetail] 成功获取电影明细: ${detail.name}`);
+      return detail;
+    } else {
+      console.warn('[MaoyanMovieDetail] API返回格式不符合预期');
+      return null;
+    }
+  } catch (error: any) {
+    console.error('[MaoyanMovieDetail] 获取电影明细失败:', error.message);
+    return null;
+  }
 }

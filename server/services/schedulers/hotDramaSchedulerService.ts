@@ -1,7 +1,7 @@
 import { scrapeKDocs } from '../scrapers/hotDrama/kdocsScraper.js';
-import { scrapeMaoyanData, MaoyanData, MaoyanBoxOffice, MaoyanRankingItem, MaoyanCalendarMovie } from '../scrapers/hotDrama/maoyanScraper.js';
+import { MaoyanMovieItem } from '../scrapers/hotDrama/maoyanScraper.js';
 import { searchTMDB } from '../hotDramaService.js';
-import { hotDramaOps, maoyanOps } from '../database.js';
+import { hotDramaOps } from '../database.js';
 
 // ==================== KDocs 热剧抓取 ====================
 
@@ -20,7 +20,7 @@ export async function refreshHotDramaData(): Promise<{ success: boolean; count: 
 
     try {
         console.log('[HotDramaScheduler] Starting hot drama refresh...');
-        
+
         const kdocsUrls = [
             { url: 'https://www.kdocs.cn/l/co72a28MWkmI', type: 'tv' },
             { url: 'https://kdocs.cn/l/cmbapmIwVsfi', type: 'movie' }
@@ -45,10 +45,10 @@ export async function refreshHotDramaData(): Promise<{ success: boolean; count: 
         const processItem = async (item: { title: string; download_link: string; baiduUrl?: string; quarkUrl?: string; sourceType?: string }) => {
             try {
                 const existing = hotDramaOps.findByTitle.get(item.title) as { title: string; tmdb_id: number | null; poster_path: string | null } | undefined;
-                
+
                 const baiduUrl = item.baiduUrl || null;
                 const quarkUrl = item.quarkUrl || null;
-                
+
                 let downloadLink = item.download_link;
                 if (baiduUrl) {
                     downloadLink = baiduUrl;
@@ -99,13 +99,13 @@ export async function refreshHotDramaData(): Promise<{ success: boolean; count: 
         let skippedCount = 0;
         let newCount = 0;
         const totalBatches = Math.ceil(allScrapedItems.length / BATCH_SIZE);
-        
+
         for (let i = 0; i < allScrapedItems.length; i += BATCH_SIZE) {
             const batch = allScrapedItems.slice(i, i + BATCH_SIZE);
             const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-            
+
             const results = await Promise.allSettled(batch.map(item => processItem(item)));
-            
+
             for (const r of results) {
                 if (r.status === 'fulfilled') {
                     if (r.value === 'skipped') {
@@ -117,7 +117,7 @@ export async function refreshHotDramaData(): Promise<{ success: boolean; count: 
                     }
                 }
             }
-            
+
             // 每10批或最后一批输出进度
             if (batchNum % 10 === 0 || batchNum === totalBatches) {
                 const progress = Math.round((i + batch.length) / allScrapedItems.length * 100);
@@ -213,75 +213,13 @@ export function isHotDramaScraping(): boolean {
 
 let isMaoyanScraping = false;
 
-/**
- * Save Maoyan data to database
- */
-function saveMaoyanDataToDatabase(data: MaoyanData): void {
-    try {
-        const now = new Date().toISOString();
-        
-        // Delete old data (clear all before inserting new data)
-        maoyanOps.deleteAllBoxOffice.run();
-        maoyanOps.deleteAllCalendar.run();
-        maoyanOps.deleteAllRankings.run();
-        
-        // Save box office data
-        for (const item of data.boxOffice) {
-            maoyanOps.insertBoxOffice.run(
-                item.rank,
-                item.movieId,
-                item.title,
-                item.boxOffice,
-                item.boxOfficeUnit,
-                item.releaseDate || null,
-                item.poster || null,
-                item.trend || null,
-                now
-            );
-        }
-        
-        // Save calendar data
-        for (const item of data.calendar) {
-            maoyanOps.insertCalendar.run(
-                item.movieId,
-                item.title,
-                item.releaseDate || null,
-                item.poster || null,
-                item.wantCount || 0,
-                now
-            );
-        }
-        
-        // Save rankings data
-        const saveRankings = (items: MaoyanRankingItem[]) => {
-            for (const item of items) {
-                maoyanOps.insertRanking.run(
-                    item.rank,
-                    item.itemId,
-                    item.title,
-                    item.score,
-                    item.poster || null,
-                    item.info || null,
-                    item.category,
-                    now
-                );
-            }
-        };
-        
-        saveRankings(data.tvRanking);
-        saveRankings(data.webSeriesRanking);
-        saveRankings(data.varietyRanking);
-        
-        console.log(`[MaoyanScheduler] Saved ${data.boxOffice.length} box office, ${data.calendar.length} calendar, ${data.tvRanking.length + data.webSeriesRanking.length + data.varietyRanking.length} rankings to database`);
-    } catch (error: any) {
-        console.error('[MaoyanScheduler] Error saving data to database:', error.message);
-    }
-}
+// 注意:数据保存逻辑已移至 hotDramaService.ts 中的 refreshAndSaveMaoyanData 函数
 
 /**
- * Refresh Maoyan ranking data
+ * Refresh Maoyan movie list data and save to database
+ * 该方法现在委托给 hotDramaService 的 refreshAndSaveMaoyanData
  */
-export async function refreshMaoyanData(): Promise<{ success: boolean; data: MaoyanData | null; error?: string }> {
+export async function refreshMaoyanData(): Promise<{ success: boolean; data: { movies: MaoyanMovieItem[]; total: number } | null; error?: string }> {
     if (isMaoyanScraping) {
         console.log('[MaoyanScheduler] Scraping already in progress, skipping...');
         return { success: false, data: null, error: 'Already scraping' };
@@ -290,23 +228,28 @@ export async function refreshMaoyanData(): Promise<{ success: boolean; data: Mao
     isMaoyanScraping = true;
 
     try {
-        console.log('[MaoyanScheduler] Starting Maoyan data refresh...');
-        const data = await scrapeMaoyanData();
-        
-        const total = data.boxOffice.length + data.calendar.length + 
-                      data.tvRanking.length + data.webSeriesRanking.length + data.varietyRanking.length;
-        
-        if (total > 0) {
-            // Save to database
-            saveMaoyanDataToDatabase(data);
-            console.log(`[MaoyanScheduler] Successfully fetched ${total} items and saved to database`);
-            return { success: true, data };
+        console.log('[MaoyanScheduler] Starting Maoyan movie list refresh...');
+
+        // 调用 hotDramaService 中的刷新和保存方法
+        const { refreshAndSaveMaoyanData } = await import('../hotDramaService.js');
+        const result = await refreshAndSaveMaoyanData();
+
+        if (result.success) {
+            console.log(`[MaoyanScheduler] Successfully refreshed ${result.total} movies`);
+            return {
+                success: true,
+                data: { movies: result.movies, total: result.total }
+            };
         } else {
-            console.log('[MaoyanScheduler] No data fetched');
-            return { success: false, data: null, error: 'No data fetched' };
+            console.log('[MaoyanScheduler] Refresh failed:', result.error);
+            return {
+                success: false,
+                data: null,
+                error: result.error
+            };
         }
     } catch (error: any) {
-        console.error('[MaoyanScheduler] Error refreshing Maoyan data:', error.message);
+        console.error('[MaoyanScheduler] Error refreshing Maoyan movie list:', error.message);
         return { success: false, data: null, error: error.message };
     } finally {
         isMaoyanScraping = false;
@@ -345,12 +288,6 @@ export function getMaoyanSchedulerInitialDelay(): number {
 }
 
 export function startMaoyanScheduler(intervalMinutes?: number, initialDelayMinutes?: number): void {
-    // 如果定时器已经在运行，先停止它
-    if (maoyanSchedulerInterval || maoyanSchedulerTimeout) {
-        console.log('[MaoyanScheduler] Stopping existing scheduler before restarting');
-        stopMaoyanScheduler();
-    }
-
     if (intervalMinutes !== undefined) MAOYAN_INTERVAL = intervalMinutes * 60 * 1000;
     if (initialDelayMinutes !== undefined) MAOYAN_INITIAL_DELAY = initialDelayMinutes * 60 * 1000;
 

@@ -1,8 +1,8 @@
 import express from 'express';
 import { requireAuth } from '../services/auth.js';
 import { schedulerConfigOps } from '../services/database.js';
-import { 
-    triggerSync, 
+import {
+    triggerSync,
     triggerPublicScraping,
     getSyncStatusForUser,
     startScheduler,
@@ -18,7 +18,7 @@ import {
     setPublicScrapingSchedulerInitialDelay,
     getPublicScrapingSchedulerInitialDelay
 } from '../services/schedulers/globalFocusSchedulerService.js';
-import { 
+import {
     scrapeAllPlatforms as scrapeHotTrends,
     startHotTrendScheduler,
     stopHotTrendScheduler,
@@ -28,7 +28,7 @@ import {
     setHotTrendSchedulerInitialDelay,
     getHotTrendSchedulerInitialDelay
 } from '../services/schedulers/hotTrendSchedulerService.js';
-import { 
+import {
     refreshHotDramaData,
     startHotDramaScheduler,
     stopHotDramaScheduler,
@@ -47,7 +47,7 @@ import {
     setMaoyanSchedulerInitialDelay,
     getMaoyanSchedulerInitialDelay
 } from '../services/schedulers/hotDramaSchedulerService.js';
-import { 
+import {
     refreshOpenSourceData,
     startOpenSourceScheduler,
     stopOpenSourceScheduler,
@@ -149,7 +149,7 @@ let schedulerConfig: SchedulerConfig = loadSchedulerConfig();
 // Start schedulers based on loaded configuration
 function startSchedulersFromConfig() {
     console.log('[Scheduler] Starting schedulers from saved configuration...');
-    
+
     if (schedulerConfig.globalFocus.enabled) {
         setSchedulerInterval(schedulerConfig.globalFocus.interval);
         setSchedulerInitialDelay(schedulerConfig.globalFocus.initialDelay);
@@ -178,8 +178,9 @@ function startSchedulersFromConfig() {
         console.log(`[Scheduler] HotDrama scheduler started (interval: ${schedulerConfig.hotDrama.interval}min)`);
     }
 
+
     if (schedulerConfig.maoyan.enabled) {
-        // 直接启动定时器，startMaoyanScheduler 内部会处理停止和重启
+        stopMaoyanScheduler(); // 先停止,避免重复启动
         startMaoyanScheduler(schedulerConfig.maoyan.interval, schedulerConfig.maoyan.initialDelay);
         console.log(`[Scheduler] Maoyan scheduler started (interval: ${schedulerConfig.maoyan.interval}min)`);
     }
@@ -203,7 +204,7 @@ router.get('/status', requireAuth, (req, res) => {
     try {
         const syncingPlatforms = getSyncStatusForUser(req.session.userId!);
         const hotTrendScraping = getHotTrendScrapingPlatforms();
-        
+
         res.json({
             config: schedulerConfig,
             status: {
@@ -244,7 +245,7 @@ router.post('/config', requireAuth, (req, res) => {
             schedulerConfig.globalFocus = { ...schedulerConfig.globalFocus, ...globalFocus };
             // Save to database
             saveSchedulerConfig('globalFocus', schedulerConfig.globalFocus);
-            
+
             if (schedulerConfig.globalFocus.enabled) {
                 stopScheduler();
                 setSchedulerInterval(schedulerConfig.globalFocus.interval);
@@ -259,7 +260,7 @@ router.post('/config', requireAuth, (req, res) => {
             schedulerConfig.publicScraping = { ...schedulerConfig.publicScraping, ...publicScraping };
             // Save to database
             saveSchedulerConfig('publicScraping', schedulerConfig.publicScraping);
-            
+
             if (schedulerConfig.publicScraping.enabled) {
                 stopPublicScrapingScheduler();
                 setPublicScrapingSchedulerInterval(schedulerConfig.publicScraping.interval);
@@ -274,7 +275,7 @@ router.post('/config', requireAuth, (req, res) => {
             schedulerConfig.hotTrends = { ...schedulerConfig.hotTrends, ...hotTrends };
             // Save to database
             saveSchedulerConfig('hotTrends', schedulerConfig.hotTrends);
-            
+
             if (schedulerConfig.hotTrends.enabled) {
                 stopHotTrendScheduler();
                 setHotTrendSchedulerInterval(schedulerConfig.hotTrends.interval);
@@ -289,7 +290,7 @@ router.post('/config', requireAuth, (req, res) => {
             schedulerConfig.hotDrama = { ...schedulerConfig.hotDrama, ...hotDrama };
             // Save to database
             saveSchedulerConfig('hotDrama', schedulerConfig.hotDrama);
-            
+
             if (schedulerConfig.hotDrama.enabled) {
                 stopHotDramaScheduler();
                 setHotDramaSchedulerInterval(schedulerConfig.hotDrama.interval);
@@ -304,7 +305,7 @@ router.post('/config', requireAuth, (req, res) => {
             schedulerConfig.maoyan = { ...schedulerConfig.maoyan, ...maoyan };
             // Save to database
             saveSchedulerConfig('maoyan', schedulerConfig.maoyan);
-            
+
             if (schedulerConfig.maoyan.enabled) {
                 stopMaoyanScheduler();
                 setMaoyanSchedulerInterval(schedulerConfig.maoyan.interval);
@@ -319,7 +320,7 @@ router.post('/config', requireAuth, (req, res) => {
             schedulerConfig.opensource = { ...schedulerConfig.opensource, ...opensource };
             // Save to database
             saveSchedulerConfig('opensource', schedulerConfig.opensource);
-            
+
             if (schedulerConfig.opensource.enabled) {
                 stopOpenSourceScheduler();
                 setOpenSourceSchedulerInterval(schedulerConfig.opensource.interval);
@@ -366,9 +367,9 @@ router.post('/trigger/:task', requireAuth, async (req, res) => {
             case 'maoyan':
                 const maoyanResult = await refreshMaoyanData();
                 if (maoyanResult.success) {
-                    const total = maoyanResult.data ? 
-                        maoyanResult.data.boxOffice.length + maoyanResult.data.calendar.length + 
-                        maoyanResult.data.tvRanking.length + maoyanResult.data.webSeriesRanking.length + 
+                    const total = maoyanResult.data ?
+                        maoyanResult.data.boxOffice.length + maoyanResult.data.calendar.length +
+                        maoyanResult.data.tvRanking.length + maoyanResult.data.webSeriesRanking.length +
                         maoyanResult.data.varietyRanking.length : 0;
                     res.json({ success: true, message: `Maoyan refresh triggered. Fetched ${total} items.` });
                 } else {
