@@ -3,6 +3,45 @@
  * 从猫眼专业版API获取电影列表数据
  */
 
+// 网播热剧列表项接口
+export interface MaoyanWebSeriesItem {
+  seriesId: string;
+  title: string;
+  currHeat: number;
+  currHeatDesc: string;
+  platformDesc: string;
+  releaseInfo: string;
+  category?: string;
+  imgUrl?: string;
+  fetchedAt: string;
+}
+
+// 网播热剧列表响应接口
+export interface MaoyanWebSeriesListResponse {
+  series: MaoyanWebSeriesItem[];
+  total: number;
+  fetchedAt: string;
+}
+
+// 网播热剧详情接口
+export interface MaoyanWebSeriesDetail {
+  seriesId: string;
+  name: string;
+  category?: string;
+  imgUrl?: string;
+  platformDesc?: string;
+  releaseInfo?: string;
+  heatTrends: Array<{
+    date: number;
+    heat: number;
+  }>;
+  historyMaxHeat?: number;
+  historyMaxHeatDate?: string;
+  commentCount?: string;
+  sumCommentCount?: string;
+  fetchedAt: string;
+}
+
 // 电影列表项接口
 export interface MaoyanMovieItem {
   movieId: string;
@@ -260,6 +299,162 @@ export async function scrapeMaoyanMovieDetail(movieId: string, showDate?: string
     }
   } catch (error: any) {
     console.error('[MaoyanMovieDetail] 获取电影明细失败:', error.message);
+    return null;
+  }
+}
+
+/**
+ * 从API获取网播热剧列表
+ */
+export async function scrapeMaoyanWebSeriesList(): Promise<MaoyanWebSeriesListResponse> {
+  // 获取今天的日期
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  const showDate = `${year}${month}${day}`;
+
+  // 构建API URL（简化版，去掉一些动态参数）
+  const apiUrl = `https://piaofang.maoyan.com/dashboard/webHeatData?showDate=${showDate}&WuKongReady=h5`;
+
+  const result: MaoyanWebSeriesListResponse = {
+    series: [],
+    total: 0,
+    fetchedAt: new Date().toISOString(),
+  };
+
+  try {
+    const headers: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      'Referer': 'https://piaofang.maoyan.com/',
+    };
+
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!response.ok) {
+      console.error(`[MaoyanWebSeriesList] API请求失败: ${response.status} ${response.statusText}`);
+      return result;
+    }
+
+    const json = await response.json();
+
+    if (json.status && json.dataList && json.dataList.list && Array.isArray(json.dataList.list)) {
+      result.series = parseWebSeriesList(json.dataList.list);
+      result.total = result.series.length;
+      console.log(`[MaoyanWebSeriesList] 成功获取 ${result.total} 部网播热剧`);
+    } else {
+      console.warn('[MaoyanWebSeriesList] API返回格式不符合预期');
+    }
+  } catch (error: any) {
+    console.error('[MaoyanWebSeriesList] 获取网播热剧列表失败:', error.message);
+  }
+
+  return result;
+}
+
+/**
+ * 解析网播热剧列表数据
+ */
+function parseWebSeriesList(data: any[]): MaoyanWebSeriesItem[] {
+  const series: MaoyanWebSeriesItem[] = [];
+  const fetchedAt = new Date().toISOString();
+
+  for (const item of data) {
+    try {
+      const seriesInfo = item.seriesInfo || {};
+      const seriesId = seriesInfo.seriesId?.toString();
+
+      if (!seriesId || !seriesInfo.name) {
+        continue;
+      }
+
+      series.push({
+        seriesId,
+        title: seriesInfo.name || '',
+        currHeat: item.currHeat || 0,
+        currHeatDesc: item.currHeatDesc || '',
+        platformDesc: seriesInfo.platformDesc || '',
+        releaseInfo: seriesInfo.releaseInfo || '',
+        category: seriesInfo.category || undefined,
+        imgUrl: seriesInfo.imgUrl || undefined,
+        fetchedAt,
+      });
+    } catch (error) {
+      console.error('[MaoyanWebSeriesList] 解析单条网播热剧数据失败:', error);
+    }
+  }
+
+  return series;
+}
+
+/**
+ * 获取网播热剧详情
+ */
+export async function scrapeMaoyanWebSeriesDetail(seriesId: string, showDate?: string): Promise<MaoyanWebSeriesDetail | null> {
+  // 如果没有提供日期，使用今天的日期
+  if (!showDate) {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    showDate = `${year}${month}${day}`;
+  }
+
+  const apiUrl = `https://piaofang.maoyan.com/dashboard/getWebDetail?showDate=${showDate}&platformType=0&seriesId=${seriesId}&WuKongReady=h5`;
+
+  try {
+    const headers: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      'Referer': 'https://piaofang.maoyan.com/',
+    };
+
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!response.ok) {
+      console.error(`[MaoyanWebSeriesDetail] API请求失败: ${response.status} ${response.statusText}`);
+      return null;
+    }
+
+    const json = await response.json();
+
+    if (json.status && json.data) {
+      const data = json.data;
+      const seriesInfo = data.seriesInfo || {};
+
+      const detail: MaoyanWebSeriesDetail = {
+        seriesId: seriesInfo.seriesId?.toString() || seriesId,
+        name: seriesInfo.name || '',
+        category: seriesInfo.category || undefined,
+        imgUrl: seriesInfo.imgUrl || undefined,
+        platformDesc: seriesInfo.platformDesc || undefined,
+        releaseInfo: seriesInfo.releaseInfo || undefined,
+        heatTrends: (data.heatTrends || []).map((trend: any) => ({
+          date: trend.date || 0,
+          heat: trend.heat || 0,
+        })),
+        historyMaxHeat: data.historyMaxHeat,
+        historyMaxHeatDate: data.historyMaxHeatDate,
+        commentCount: data.commentCount,
+        sumCommentCount: data.sumCommentCountSplitUnit ? `${data.sumCommentCountSplitUnit.num}${data.sumCommentCountSplitUnit.unit}` : undefined,
+        fetchedAt: new Date().toISOString(),
+      };
+      return detail;
+    } else {
+      console.warn('[MaoyanWebSeriesDetail] API返回格式不符合预期');
+      return null;
+    }
+  } catch (error: any) {
+    console.error('[MaoyanWebSeriesDetail] 获取网播热剧明细失败:', error.message);
     return null;
   }
 }

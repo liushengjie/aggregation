@@ -2,13 +2,14 @@
 // 使用 The Movie Database 作为数据源
 // 限流: 40 请求/10秒
 
-import type { MaoyanMovieItem, MaoyanMovieListResponse } from './scrapers/hotDrama/maoyanScraper.js';
+import type { MaoyanMovieItem, MaoyanMovieListResponse, MaoyanWebSeriesItem, MaoyanWebSeriesListResponse } from './scrapers/hotDrama/maoyanScraper.js';
 import { refreshMaoyanData } from './schedulers/hotDramaSchedulerService.js';
 import { scrapeWeiboSearch } from './scrapers/search/weiboSearchScraper.js';
 import { scrapeXiaohongshuSearch } from './scrapers/search/xiaohongshuSearchScraper.js';
 import { scrapeBilibiliSearch } from './scrapers/search/bilibiliSearchScraper.js';
 import { saveBilibiliSearchResults, saveWeiboSearchResults, saveXiaohongshuSearchResults } from './searchService.js';
-import { searchOps } from './database.js';
+import { searchOps, maoyanOps } from './database.js';
+import { scrapeMaoyanWebSeriesList } from './scrapers/hotDrama/maoyanScraper.js';
 
 const TMDB_API_KEY = '9d0a3769b77fee44cfbf912cd84e62f1';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
@@ -436,4 +437,231 @@ export async function searchAndSaveMovieDiscussions(movies: MaoyanMovieItem[]): 
     }
     
     console.log(`[MaoyanService] Finished searching discussions for all movies`);
+}
+
+/**
+ * 搜索并保存网播热剧相关的讨论
+ */
+export async function searchAndSaveWebSeriesDiscussions(series: MaoyanWebSeriesItem[]): Promise<void> {
+    console.log(`[MaoyanService] Starting to search discussions for ${series.length} web series...`);
+    
+    for (const item of series) {
+        const seriesId = item.seriesId;
+        const seriesTitle = item.title;
+        
+        try {
+            // 检查是否已有搜索结果
+            const hasWeibo = (searchOps.hasSeriesSearchResults.get(seriesId, 'weibo') as { count: number })?.count || 0;
+            const hasXiaohongshu = (searchOps.hasSeriesSearchResults.get(seriesId, 'xiaohongshu') as { count: number })?.count || 0;
+            const hasBilibili = (searchOps.hasSeriesSearchResults.get(seriesId, 'bilibili') as { count: number })?.count || 0;
+            
+            // 1. 微博搜索（剧集名称）
+            if (hasWeibo === 0) {
+                try {
+                    console.log(`[MaoyanService] Searching Weibo for web series: ${seriesTitle}`);
+                    const weiboResult = await scrapeWeiboSearch(seriesTitle, { page: 1, limit: 20 });
+                    if (weiboResult.results.length > 0) {
+                        await saveWeiboSearchResults(seriesTitle, 1, weiboResult.results);
+                        searchOps.insertSeriesSearchRelation.run(
+                            seriesId,
+                            seriesTitle,
+                            'weibo',
+                            seriesTitle,
+                            'webSeries',
+                            weiboResult.results.length
+                        );
+                        console.log(`[MaoyanService] Saved ${weiboResult.results.length} Weibo results for ${seriesTitle}`);
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                } catch (error: any) {
+                    console.error(`[MaoyanService] Error searching Weibo for ${seriesTitle}: ${error.message}`);
+                }
+            } else {
+                console.log(`[MaoyanService] Skipping Weibo search for ${seriesTitle} (already exists)`);
+            }
+            
+            // 2. 小红书搜索（剧集名称）
+            if (hasXiaohongshu === 0) {
+                try {
+                    console.log(`[MaoyanService] Searching Xiaohongshu for web series: ${seriesTitle}`);
+                    const xhsResult = await scrapeXiaohongshuSearch(seriesTitle, { page: 1, limit: 20 });
+                    if (xhsResult.results.length > 0) {
+                        await saveXiaohongshuSearchResults(seriesTitle, 1, xhsResult.results);
+                        searchOps.insertSeriesSearchRelation.run(
+                            seriesId,
+                            seriesTitle,
+                            'xiaohongshu',
+                            seriesTitle,
+                            'webSeries',
+                            xhsResult.results.length
+                        );
+                        console.log(`[MaoyanService] Saved ${xhsResult.results.length} Xiaohongshu results for ${seriesTitle}`);
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                } catch (error: any) {
+                    console.error(`[MaoyanService] Error searching Xiaohongshu for ${seriesTitle}: ${error.message}`);
+                }
+            } else {
+                console.log(`[MaoyanService] Skipping Xiaohongshu search for ${seriesTitle} (already exists)`);
+            }
+            
+            // 3. B站搜索（剧集名称）
+            if (hasBilibili === 0) {
+                try {
+                    console.log(`[MaoyanService] Searching Bilibili for web series: ${seriesTitle}`);
+                    const biliResult = await scrapeBilibiliSearch(seriesTitle, { page: 1, limit: 20, searchType: 'video' });
+                    if (biliResult.results.length > 0) {
+                        await saveBilibiliSearchResults(seriesTitle, 1, biliResult.results);
+                        searchOps.insertSeriesSearchRelation.run(
+                            seriesId,
+                            seriesTitle,
+                            'bilibili',
+                            seriesTitle,
+                            'webSeries',
+                            biliResult.results.length
+                        );
+                        console.log(`[MaoyanService] Saved ${biliResult.results.length} Bilibili results for ${seriesTitle}`);
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                } catch (error: any) {
+                    console.error(`[MaoyanService] Error searching Bilibili for ${seriesTitle}: ${error.message}`);
+                }
+            } else {
+                console.log(`[MaoyanService] Skipping Bilibili search for ${seriesTitle} (already exists)`);
+            }
+            
+        } catch (error: any) {
+            console.error(`[MaoyanService] Error processing web series ${seriesTitle}: ${error.message}`);
+        }
+    }
+    
+    console.log(`[MaoyanService] Finished searching discussions for all web series`);
+}
+
+/**
+ * 保存网播热剧列表到数据库
+ */
+export async function saveMaoyanWebSeriesToDatabase(series: MaoyanWebSeriesItem[]): Promise<number> {
+  try {
+    if (series.length === 0) {
+      console.log('[MaoyanService] No web series to save');
+      return 0;
+    }
+
+    // 先删除所有旧数据
+    maoyanOps.deleteAllWebSeriesList.run();
+
+    // 保存新数据到数据库
+    const fetchedAt = new Date().toISOString();
+    for (const item of series) {
+      maoyanOps.insertWebSeries.run(
+        item.seriesId,
+        item.title,
+        item.currHeat || null,
+        item.currHeatDesc || null,
+        item.platformDesc || null,
+        item.releaseInfo || null,
+        item.category || null,
+        item.imgUrl || null,
+        fetchedAt
+      );
+    }
+
+    console.log(`[MaoyanService] Successfully saved ${series.length} web series to database`);
+    return series.length;
+  } catch (error: any) {
+    console.error('[MaoyanService] Error saving web series to database:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * 刷新网播热剧数据:抓取并保存到数据库
+ */
+export async function refreshAndSaveMaoyanWebSeriesData(): Promise<{
+  success: boolean;
+  total: number;
+  series: MaoyanWebSeriesItem[];
+  error?: string;
+}> {
+  try {
+    console.log('[MaoyanService] Starting Maoyan web series data refresh...');
+
+    // 调用爬虫抓取数据
+    const result = await scrapeMaoyanWebSeriesList();
+
+    if (result.series.length > 0) {
+      // 保存到数据库
+      await saveMaoyanWebSeriesToDatabase(result.series);
+
+      return {
+        success: true,
+        total: result.total,
+        series: result.series
+      };
+    } else {
+      return {
+        success: false,
+        total: 0,
+        series: [],
+        error: 'No web series fetched'
+      };
+    }
+  } catch (error: any) {
+    console.error('[MaoyanService] Error refreshing Maoyan web series data:', error.message);
+    return {
+      success: false,
+      total: 0,
+      series: [],
+      error: error.message
+    };
+  }
+}
+
+/**
+ * 从数据库加载网播热剧列表数据
+ */
+function loadMaoyanWebSeriesListFromDatabase(): MaoyanWebSeriesItem[] {
+  try {
+    const rows = maoyanOps.getLatestWebSeriesList.all() as Array<{
+      seriesId: string;
+      title: string;
+      currHeat: number | null;
+      currHeatDesc: string | null;
+      platformDesc: string | null;
+      releaseInfo: string | null;
+      category: string | null;
+      imgUrl: string | null;
+      fetchedAt: string;
+    }>;
+
+    return rows.map(row => ({
+      seriesId: row.seriesId,
+      title: row.title,
+      currHeat: row.currHeat ?? 0,
+      currHeatDesc: row.currHeatDesc || '',
+      platformDesc: row.platformDesc || '',
+      releaseInfo: row.releaseInfo || '',
+      category: row.category || undefined,
+      imgUrl: row.imgUrl || undefined,
+      fetchedAt: row.fetchedAt,
+    }));
+  } catch (error: any) {
+    console.error('[MaoyanService] Error loading web series list from database:', error.message);
+    return [];
+  }
+}
+
+/**
+ * 获取网播热剧列表（直接从数据库读取）
+ */
+export async function getMaoyanWebSeriesList(forceRefresh: boolean = false): Promise<MaoyanWebSeriesItem[]> {
+  // 如果强制刷新，触发抓取
+  if (forceRefresh) {
+    console.log('[MaoyanService] Force refresh requested for web series, triggering scrape...');
+    await refreshAndSaveMaoyanWebSeriesData();
+  }
+
+  // 直接从数据库读取
+  return loadMaoyanWebSeriesListFromDatabase();
 }

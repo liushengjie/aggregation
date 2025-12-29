@@ -231,6 +231,48 @@ export const maoyanApi = {
         if (limit) params.append('limit', limit.toString());
         return fetchApi(`/hot-drama/maoyan/xiaohongshu-comments?${params.toString()}`);
     },
+
+    // 获取电影的微博热评
+    getWeiboComments: (movieId: string, limit?: number) => {
+        const params = new URLSearchParams({ movieId });
+        if (limit) params.append('limit', limit.toString());
+        return fetchApi(`/hot-drama/maoyan/weibo-comments?${params.toString()}`);
+    },
+
+    // 获取网播热剧列表
+    getWebSeriesList: (forceRefresh?: boolean) => {
+        const params = new URLSearchParams();
+        if (forceRefresh) params.append('forceRefresh', 'true');
+        return fetchApi(`/hot-drama/maoyan/web-series-list?${params.toString()}`);
+    },
+
+    // 获取网播热剧详情
+    getWebSeriesDetail: (seriesId: string, showDate?: string) => {
+        const params = new URLSearchParams({ seriesId });
+        if (showDate) params.append('showDate', showDate);
+        return fetchApi(`/hot-drama/maoyan/web-series-detail?${params.toString()}`);
+    },
+
+    // 获取网播热剧的B站解说
+    getWebSeriesBilibiliComments: (seriesId: string, limit?: number) => {
+        const params = new URLSearchParams({ seriesId });
+        if (limit) params.append('limit', limit.toString());
+        return fetchApi(`/hot-drama/maoyan/web-series/bilibili-comments?${params.toString()}`);
+    },
+
+    // 获取网播热剧的小红书讨论
+    getWebSeriesXiaohongshuComments: (seriesId: string, limit?: number) => {
+        const params = new URLSearchParams({ seriesId });
+        if (limit) params.append('limit', limit.toString());
+        return fetchApi(`/hot-drama/maoyan/web-series/xiaohongshu-comments?${params.toString()}`);
+    },
+
+    // 获取网播热剧的微博热评
+    getWebSeriesWeiboComments: (seriesId: string, limit?: number) => {
+        const params = new URLSearchParams({ seriesId });
+        if (limit) params.append('limit', limit.toString());
+        return fetchApi(`/hot-drama/maoyan/web-series/weibo-comments?${params.toString()}`);
+    },
 };
 
 // Scheduler API
@@ -261,6 +303,40 @@ export const analyticsApi = {
     getStats: (days?: number) => {
         const params = days ? `?days=${days}` : '';
         return fetchApi(`/analytics/stats${params}`);
+    },
+};
+
+// Search API
+export const searchApi = {
+    // 微博搜索
+    weibo: (keyword: string, page: number = 1, limit: number = 20) => {
+        const params = new URLSearchParams({
+            q: keyword,
+            page: page.toString(),
+            limit: limit.toString(),
+        });
+        return fetchApi(`/search/weibo?${params.toString()}`);
+    },
+
+    // 小红书搜索
+    xiaohongshu: (keyword: string, page: number = 1, limit: number = 20) => {
+        const params = new URLSearchParams({
+            q: keyword,
+            page: page.toString(),
+            limit: limit.toString(),
+        });
+        return fetchApi(`/search/xiaohongshu?${params.toString()}`);
+    },
+
+    // B站搜索
+    bilibili: (keyword: string, page: number = 1, limit: number = 20, type: 'video' | 'bangumi' | 'article' | 'live' = 'video') => {
+        const params = new URLSearchParams({
+            q: keyword,
+            page: page.toString(),
+            limit: limit.toString(),
+            type: type,
+        });
+        return fetchApi(`/search/bilibili?${params.toString()}`);
     },
 };
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Film, Loader2, Star, TrendingUp, MessageSquare, Heart, Share2, Award, Zap, Menu, Trophy, Sparkles, Calendar, Ticket, PieChart, Monitor, Users, Play, ChevronRight, ChevronLeft, X, ExternalLink } from 'lucide-react';
-import { maoyanApi, getApiBase } from '../api/api';
+import { Film, Loader2, Star, TrendingUp, MessageSquare, Heart, Share2, Award, Zap, Menu, Trophy, Sparkles, Calendar, Ticket, PieChart, Monitor, Users, Play, ChevronRight, ChevronLeft, X, ExternalLink, Tv } from 'lucide-react';
+import { maoyanApi, getApiBase, searchApi } from '../api/api';
 import Masonry from 'react-masonry-css';
 
 // 电影列表项接口
@@ -37,6 +37,38 @@ interface MaoyanMovieDetail {
   fetchedAt: string;
 }
 
+// 网播热剧列表项接口
+interface MaoyanWebSeriesItem {
+  seriesId: string;
+  title: string;
+  currHeat: number;
+  currHeatDesc: string;
+  platformDesc: string;
+  releaseInfo: string;
+  category?: string;
+  imgUrl?: string;
+  fetchedAt: string;
+}
+
+// 网播热剧详情接口
+interface MaoyanWebSeriesDetail {
+  seriesId: string;
+  name: string;
+  category?: string;
+  imgUrl?: string;
+  platformDesc?: string;
+  releaseInfo?: string;
+  heatTrends: Array<{
+    date: number;
+    heat: number;
+  }>;
+  historyMaxHeat?: number;
+  historyMaxHeatDate?: string;
+  commentCount?: string;
+  sumCommentCount?: string;
+  fetchedAt: string;
+}
+
 const HotDramaView: React.FC = () => {
   const [movies, setMovies] = useState<MaoyanMovieItem[]>([]);
   const [selectedMovie, setSelectedMovie] = useState<MaoyanMovieItem | null>(null);
@@ -49,12 +81,31 @@ const HotDramaView: React.FC = () => {
   const [xiaohongshuLoading, setXiaohongshuLoading] = useState(false);
   const [selectedXiaohongshuItem, setSelectedXiaohongshuItem] = useState<any | null>(null);
   const [showXiaohongshuModal, setShowXiaohongshuModal] = useState(false);
+  const [weiboComments, setWeiboComments] = useState<any[]>([]);
+  const [weiboLoading, setWeiboLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [mainTab, setMainTab] = useState<'ranking' | 'resources'>('ranking'); // 主tab：影视排行榜/热门资源
+  const [mainTab, setMainTab] = useState<'ranking' | 'resources' | 'webSeries'>('ranking'); // 主tab：影视排行榜/热门资源/网播热剧
+  
+  // 网播热剧相关状态
+  const [webSeriesList, setWebSeriesList] = useState<MaoyanWebSeriesItem[]>([]);
+  const [selectedWebSeries, setSelectedWebSeries] = useState<MaoyanWebSeriesItem | null>(null);
+  const [webSeriesDetail, setWebSeriesDetail] = useState<MaoyanWebSeriesDetail | null>(null);
+  const [webSeriesBilibiliComments, setWebSeriesBilibiliComments] = useState<any[]>([]);
+  const [webSeriesBilibiliLoading, setWebSeriesBilibiliLoading] = useState(false);
+  const [webSeriesBilibiliScrollIndex, setWebSeriesBilibiliScrollIndex] = useState(0);
+  const [webSeriesCanScrollRight, setWebSeriesCanScrollRight] = useState(false);
+  const [webSeriesXiaohongshuComments, setWebSeriesXiaohongshuComments] = useState<any[]>([]);
+  const [webSeriesXiaohongshuLoading, setWebSeriesXiaohongshuLoading] = useState(false);
+  const [webSeriesWeiboComments, setWebSeriesWeiboComments] = useState<any[]>([]);
+  const [webSeriesWeiboLoading, setWebSeriesWeiboLoading] = useState(false);
+  const [webSeriesLoading, setWebSeriesLoading] = useState(true);
+  const [webSeriesDetailLoading, setWebSeriesDetailLoading] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const movieItemRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
   const bilibiliScrollRef = useRef<HTMLDivElement>(null);
+  const webSeriesBilibiliScrollRef = useRef<HTMLDivElement>(null);
+  const detailScrollRef = useRef<HTMLDivElement>(null);
 
   // 加载电影列表
   const loadMovieList = useCallback(async () => {
@@ -147,26 +198,235 @@ const HotDramaView: React.FC = () => {
     }
   }, []);
 
+  // 加载微博热评
+  const loadWeiboComments = useCallback(async (movieId: string) => {
+    try {
+      setWeiboLoading(true);
+      setWeiboComments([]);
+      // 使用后台接口获取微博热评
+      const response = await maoyanApi.getWeiboComments(movieId, 10);
+      if (response.success && response.data && response.data.items) {
+        setWeiboComments(response.data.items);
+      } else {
+        setWeiboComments([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch Weibo comments:', error);
+      setWeiboComments([]);
+    } finally {
+      setWeiboLoading(false);
+    }
+  }, []);
+
+  // 加载网播热剧列表
+  const loadWebSeriesList = useCallback(async () => {
+    try {
+      setWebSeriesLoading(true);
+      const response = await maoyanApi.getWebSeriesList();
+      if (response.success && response.data && response.data.items) {
+        const seriesList = response.data.items;
+        setWebSeriesList(seriesList);
+        if (seriesList.length > 0) {
+          setSelectedWebSeries(prev => prev || seriesList[0]);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch web series list:', error);
+      setWebSeriesList([]);
+    } finally {
+      setWebSeriesLoading(false);
+    }
+  }, []);
+
+  // 加载网播热剧详情
+  const loadWebSeriesDetail = useCallback(async (seriesId: string) => {
+    try {
+      setWebSeriesDetailLoading(true);
+      const response = await maoyanApi.getWebSeriesDetail(seriesId);
+      if (response.success && response.data) {
+        setWebSeriesDetail(response.data);
+      } else {
+        setWebSeriesDetail(null);
+      }
+    } catch (error) {
+      console.error('Failed to fetch web series detail:', error);
+      setWebSeriesDetail(null);
+    } finally {
+      setWebSeriesDetailLoading(false);
+    }
+  }, []);
+
+  // 加载网播热剧B站解说
+  const loadWebSeriesBilibiliComments = useCallback(async (seriesId: string) => {
+    try {
+      setWebSeriesBilibiliLoading(true);
+      setWebSeriesBilibiliComments([]);
+      setWebSeriesCanScrollRight(false);
+      const response = await maoyanApi.getWebSeriesBilibiliComments(seriesId, 20);
+      if (response.success && response.data) {
+        setWebSeriesBilibiliComments(response.data.items || []);
+        setTimeout(() => {
+          if (webSeriesBilibiliScrollRef.current) {
+            const container = webSeriesBilibiliScrollRef.current;
+            const maxScroll = container.scrollWidth - container.clientWidth;
+            setWebSeriesCanScrollRight(maxScroll > 10);
+          }
+        }, 100);
+      } else {
+        setWebSeriesBilibiliComments([]);
+        setWebSeriesCanScrollRight(false);
+      }
+    } catch (error) {
+      console.error('Failed to fetch web series Bilibili comments:', error);
+      setWebSeriesBilibiliComments([]);
+      setWebSeriesCanScrollRight(false);
+    } finally {
+      setWebSeriesBilibiliLoading(false);
+    }
+  }, []);
+
+  // 加载网播热剧小红书讨论
+  const loadWebSeriesXiaohongshuComments = useCallback(async (seriesId: string) => {
+    try {
+      setWebSeriesXiaohongshuLoading(true);
+      setWebSeriesXiaohongshuComments([]);
+      const response = await maoyanApi.getWebSeriesXiaohongshuComments(seriesId, 100);
+      if (response.success && response.data) {
+        setWebSeriesXiaohongshuComments(response.data.items || []);
+      } else {
+        setWebSeriesXiaohongshuComments([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch web series Xiaohongshu comments:', error);
+      setWebSeriesXiaohongshuComments([]);
+    } finally {
+      setWebSeriesXiaohongshuLoading(false);
+    }
+  }, []);
+
+  // 加载网播热剧微博热评
+  const loadWebSeriesWeiboComments = useCallback(async (seriesId: string) => {
+    try {
+      setWebSeriesWeiboLoading(true);
+      setWebSeriesWeiboComments([]);
+      const response = await maoyanApi.getWebSeriesWeiboComments(seriesId, 10);
+      if (response.success && response.data && response.data.items) {
+        setWebSeriesWeiboComments(response.data.items);
+      } else {
+        setWebSeriesWeiboComments([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch web series Weibo comments:', error);
+      setWebSeriesWeiboComments([]);
+    } finally {
+      setWebSeriesWeiboLoading(false);
+    }
+  }, []);
+
   // 初始加载
   useEffect(() => {
-    loadMovieList();
-  }, [loadMovieList]);
+    if (mainTab === 'ranking') {
+      loadMovieList();
+    } else if (mainTab === 'webSeries') {
+      loadWebSeriesList();
+    }
+  }, [mainTab, loadMovieList, loadWebSeriesList]);
 
-  // 当选中电影改变时，加载详情和B站解说、小红书讨论
+  // 当选中电影改变时，加载详情和B站解说、小红书讨论、微博热评
   useEffect(() => {
     if (selectedMovie) {
       loadMovieDetail(selectedMovie.movieId);
       loadBilibiliComments(selectedMovie.movieId);
       loadXiaohongshuComments(selectedMovie.movieId);
+      loadWeiboComments(selectedMovie.movieId);
       setBilibiliScrollIndex(0); // 重置滚动位置
       setCanScrollRight(false); // 初始化时不显示右箭头
+      
+      // 立即滚动到顶部（不使用smooth，确保立即执行）
+      if (detailScrollRef.current) {
+        detailScrollRef.current.scrollTop = 0;
+      }
+      
+      // 延迟再次滚动，确保内容加载后也能滚动
+      setTimeout(() => {
+        if (detailScrollRef.current) {
+          detailScrollRef.current.scrollTop = 0;
+        }
+      }, 300);
     } else {
       setBilibiliComments([]);
       setXiaohongshuComments([]);
+      setWeiboComments([]);
       setBilibiliScrollIndex(0);
       setCanScrollRight(false);
     }
-  }, [selectedMovie, loadMovieDetail, loadBilibiliComments, loadXiaohongshuComments]);
+  }, [selectedMovie, loadMovieDetail, loadBilibiliComments, loadXiaohongshuComments, loadWeiboComments]);
+
+  // 当选中网播热剧改变时，加载详情和B站解说、小红书讨论、微博热评
+  useEffect(() => {
+    if (selectedWebSeries) {
+      loadWebSeriesDetail(selectedWebSeries.seriesId);
+      loadWebSeriesBilibiliComments(selectedWebSeries.seriesId);
+      loadWebSeriesXiaohongshuComments(selectedWebSeries.seriesId);
+      loadWebSeriesWeiboComments(selectedWebSeries.seriesId);
+      setWebSeriesBilibiliScrollIndex(0);
+      setWebSeriesCanScrollRight(false);
+      
+      // 滚动到顶部
+      if (detailScrollRef.current) {
+        detailScrollRef.current.scrollTop = 0;
+      }
+      setTimeout(() => {
+        if (detailScrollRef.current) {
+          detailScrollRef.current.scrollTop = 0;
+        }
+      }, 300);
+    } else {
+      setWebSeriesBilibiliComments([]);
+      setWebSeriesXiaohongshuComments([]);
+      setWebSeriesWeiboComments([]);
+      setWebSeriesBilibiliScrollIndex(0);
+      setWebSeriesCanScrollRight(false);
+    }
+  }, [selectedWebSeries, loadWebSeriesDetail, loadWebSeriesBilibiliComments, loadWebSeriesXiaohongshuComments, loadWebSeriesWeiboComments]);
+
+  // 检查网播热剧B站是否可以向右滚动
+  useEffect(() => {
+    const checkScrollability = () => {
+      if (webSeriesBilibiliScrollRef.current) {
+        const container = webSeriesBilibiliScrollRef.current;
+        const maxScroll = container.scrollWidth - container.clientWidth;
+        const currentScroll = container.scrollLeft;
+        setWebSeriesCanScrollRight(currentScroll < maxScroll - 10);
+      } else {
+        setWebSeriesCanScrollRight(false);
+      }
+    };
+
+    checkScrollability();
+
+    const container = webSeriesBilibiliScrollRef.current;
+    if (container) {
+      container.addEventListener('scroll', checkScrollability);
+      window.addEventListener('resize', checkScrollability);
+      
+      return () => {
+        container.removeEventListener('scroll', checkScrollability);
+        window.removeEventListener('resize', checkScrollability);
+      };
+    }
+  }, [webSeriesBilibiliComments]);
+
+  // 当详情加载完成后，也滚动到顶部
+  useEffect(() => {
+    if ((movieDetail || webSeriesDetail) && detailScrollRef.current) {
+      setTimeout(() => {
+        if (detailScrollRef.current) {
+          detailScrollRef.current.scrollTop = 0;
+        }
+      }, 100);
+    }
+  }, [movieDetail, webSeriesDetail]);
 
   // 检查是否可以向右滚动
   useEffect(() => {
@@ -209,7 +469,6 @@ const HotDramaView: React.FC = () => {
   // 处理电影选择
   const handleMovieSelect = (movie: MaoyanMovieItem) => {
     setSelectedMovie(movie);
-    // 不再自动滚动到顶部，保持当前滚动位置或仅在必要时滚动
   };
 
   // 图片代理URL处理函数
@@ -219,7 +478,12 @@ const HotDramaView: React.FC = () => {
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       fullUrl = 'https://' + url;
     }
+    // 小红书图片代理
     if (fullUrl.includes('xhscdn.com') || fullUrl.includes('xhslink.com') || fullUrl.includes('sns-webpic-qc.xhscdn.com')) {
+      return `${getApiBase()}/image/proxy?url=${encodeURIComponent(fullUrl)}`;
+    }
+    // B站图片代理
+    if (fullUrl.includes('hdslb.com') || fullUrl.includes('biliimg.com') || fullUrl.includes('bilicdn.com') || fullUrl.includes('b23.tv')) {
       return `${getApiBase()}/image/proxy?url=${encodeURIComponent(fullUrl)}`;
     }
     return fullUrl;
@@ -302,6 +566,16 @@ const HotDramaView: React.FC = () => {
           >
             <Sparkles size={14} />
             <span>热门资源</span>
+                </button>
+                <button
+            onClick={() => setMainTab('webSeries')}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-xs font-black transition-all whitespace-nowrap shrink-0 ${mainTab === 'webSeries'
+              ? 'bg-rose-600 text-white shadow-md'
+              : 'bg-white/40 text-slate-600 hover:bg-white/60 hover:text-slate-800'
+              }`}
+          >
+            <Tv size={14} />
+            <span>网播热剧</span>
                 </button>
               </div>
             </div>
@@ -431,19 +705,20 @@ const HotDramaView: React.FC = () => {
                   <p className="text-slate-400 font-bold text-sm mt-4 uppercase tracking-widest">正在探索电影奥秘...</p>
                 </div>
               ) : movieDetail ? (
-                <div className="flex-1 flex flex-col overflow-y-auto custom-scrollbar relative z-10">
+                <div ref={detailScrollRef} className="flex-1 flex flex-col overflow-y-auto custom-scrollbar relative z-10">
                   {/* 电影头部信息 - 新布局 */}
                   <div className="px-4 py-3 border-b border-white/60 bg-gradient-to-br from-white/80 to-white/40">
                     <div className="flex items-stretch gap-4">
                       {/* 最左侧：影视海报 */}
                       <div className="relative group flex-shrink-0 flex flex-col">
                         {movieDetail.imgUrl ? (
-                          <img
-                            src={movieDetail.imgUrl}
-                            alt={movieDetail.name}
-                            className="w-64 h-auto object-contain rounded-lg shadow-xl transition-transform duration-500 group-hover:scale-[1.02] border-2 border-white"
-                            style={{ maxHeight: '100%' }}
-                          />
+                          <div className="w-64 bg-slate-200 rounded-lg overflow-hidden border-2 border-white shadow-xl" style={{ aspectRatio: '2/3' }}>
+                            <img
+                              src={movieDetail.imgUrl}
+                              alt={movieDetail.name}
+                              className="w-full h-full object-cover rounded-lg transition-transform duration-500 group-hover:scale-[1.02]"
+                            />
+                          </div>
                         ) : (
                           <div className="w-64 h-full bg-slate-200 rounded-lg flex items-center justify-center text-slate-400 border-2 border-white shadow-xl" style={{ aspectRatio: '2/3' }}>
                             <Film size={32} />
@@ -802,10 +1077,10 @@ const HotDramaView: React.FC = () => {
                   <div className="px-4 py-3 flex flex-col gap-3 bg-slate-50/50">
 
                     {/* 微博 & 小红书 (并排) */}
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 gap-0 relative">
                       {/* 微博热评 */}
-                      <div className="flex flex-col gap-3">
-                        <div className="flex items-center gap-2 mb-1">
+                      <div className="flex flex-col gap-3 pr-4 relative">
+                        <div className="flex items-center gap-2 mb-1 pb-2 border-b border-slate-200/40">
                           <div className="w-7 h-7 bg-[#E6162D] rounded-lg flex items-center justify-center text-white shadow-md">
                             <Share2 size={14} />
                           </div>
@@ -815,33 +1090,187 @@ const HotDramaView: React.FC = () => {
                           </div>
                         </div>
 
-                        {[1, 2].map(i => (
-                          <div key={i} className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
-                            <div className="flex items-center gap-2 mb-2">
-                              <div className="w-5 h-5 bg-slate-200 rounded-full"></div>
-                              <span className="text-[10px] font-black text-slate-700">影评达人_{i}</span>
-                              <span className="ml-auto text-[9px] text-slate-400">2h前</span>
-                            </div>
-                            <p className="text-[10px] text-slate-600 leading-relaxed mb-2 line-clamp-3">
-                              {i === 1 ? '这部片子的特效真的没话说，完全值回票价！剧情节奏也很紧凑，推荐大家去看。' : '主演的演技爆发，那个眼神直接把我整破防了，今年国产电影的黑马！'}
-                            </p>
-                            <div className="flex items-center gap-3 text-slate-400">
-                              <div className="flex items-center gap-1">
-                                <Heart size={10} />
-                                <span className="text-[9px] font-bold">1.2k</span>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <MessageSquare size={10} />
-                                <span className="text-[9px] font-bold">234</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                        {weiboLoading ? (
+                          <div className="flex items-center justify-center py-8">
+                            <Loader2 className="animate-spin text-red-600" size={20} />
+                          </div>
+                        ) : weiboComments.length === 0 ? (
+                          <div className="text-center py-8 text-slate-400 text-xs">
+                            暂无微博数据
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-3 h-full">
+                            {weiboComments.map((comment, index) => {
+                              const avatarUrl = comment.author?.avatar ? getImageProxyUrl(comment.author.avatar) : '';
+                              const formatTime = (timeStr?: string) => {
+                                if (!timeStr) return '刚刚';
+                                try {
+                                  const date = new Date(timeStr);
+                                  const now = new Date();
+                                  const diff = now.getTime() - date.getTime();
+                                  const minutes = Math.floor(diff / 60000);
+                                  const hours = Math.floor(minutes / 60);
+                                  const days = Math.floor(hours / 24);
+                                  if (days > 0) return `${days}天前`;
+                                  if (hours > 0) return `${hours}小时前`;
+                                  if (minutes > 0) return `${minutes}分钟前`;
+                                  return '刚刚';
+                                } catch {
+                                  return '刚刚';
+                                }
+                              };
+                              
+                              // 渲染文本内容，处理话题和@提及
+                              const renderText = (text: string) => {
+                                if (!text) return null;
+                                const parts: React.ReactNode[] = [];
+                                let lastIndex = 0;
+                                
+                                // 匹配话题 #xxx# 和 @提及
+                                const regex = /(#([^#]+)#|@([^\s@]+))/g;
+                                let match;
+                                
+                                while ((match = regex.exec(text)) !== null) {
+                                  // 添加前面的普通文本
+                                  if (match.index > lastIndex) {
+                                    parts.push(text.substring(lastIndex, match.index));
+                                  }
+                                  
+                                  // 添加话题或@提及
+                                  if (match[0].startsWith('#')) {
+                                    parts.push(
+                                      <span key={match.index} className="text-[#ff6b9d] font-medium">
+                                        {match[0]}
+                                      </span>
+                                    );
+                                  } else {
+                                    parts.push(
+                                      <span key={match.index} className="text-[#1da1f2] font-medium">
+                                        {match[0]}
+                                      </span>
+                                    );
+                                  }
+                                  
+                                  lastIndex = regex.lastIndex;
+                                }
+                                
+                                // 添加剩余的文本
+                                if (lastIndex < text.length) {
+                                  parts.push(text.substring(lastIndex));
+                                }
+                                
+                                return parts.length > 0 ? parts : text;
+                              };
+
+                              return (
+                                <div 
+                                  key={comment.id || index} 
+                                  className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-all cursor-pointer"
+                                  onClick={() => comment.url && window.open(comment.url, '_blank')}
+                                >
+                                  {/* 用户信息 */}
+                                  <div className="flex items-start gap-2 mb-2">
+                                    <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-200 flex-shrink-0">
+                                      {avatarUrl ? (
+                                        <img 
+                                          src={avatarUrl} 
+                                          alt={comment.author?.name || ''} 
+                                          className="w-full h-full object-cover"
+                                          onError={(e) => {
+                                            const target = e.target as HTMLImageElement;
+                                            target.style.display = 'none';
+                                          }}
+                                        />
+                                      ) : (
+                                        <div className="w-full h-full bg-gradient-to-br from-red-400 to-pink-500 flex items-center justify-center text-white text-xs font-bold">
+                                          {comment.author?.name?.charAt(0) || '?'}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <span className="text-[11px] font-bold text-slate-800 truncate">
+                                          {comment.author?.name || '微博用户'}
+                                        </span>
+                                        <span className="text-[9px] text-slate-400 flex-shrink-0">
+                                          {formatTime(comment.publishTime)}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* 微博内容 */}
+                                  <div className="mb-2">
+                                    <p className="text-[11px] text-slate-700 leading-relaxed break-words">
+                                      {renderText(comment.text || '')}
+                                    </p>
+                                    
+                                    {/* 转发原文 */}
+                                    {comment.isRepost && comment.originalWeibo && (
+                                      <div className="mt-2 p-2 bg-slate-50 rounded-lg border border-slate-100">
+                                        <div className="text-[10px] text-slate-500 mb-1">
+                                          @{comment.originalWeibo.author || '原微博'}
+                                        </div>
+                                        <p className="text-[10px] text-slate-600 line-clamp-2">
+                                          {comment.originalWeibo.text || ''}
+                                        </p>
+                                      </div>
+                                    )}
+
+                                    {/* 图片 */}
+                                    {comment.images && comment.images.length > 0 && (
+                                      <div className="mt-2 grid grid-cols-4 gap-1 rounded-lg overflow-hidden">
+                                        {comment.images.slice(0, 9).map((img: string, imgIndex: number) => (
+                                          <div key={imgIndex} className="aspect-square bg-slate-100 rounded overflow-hidden">
+                                            <img 
+                                              src={getImageProxyUrl(img)} 
+                                              alt="" 
+                                              className="w-full h-full object-cover"
+                                              onError={(e) => {
+                                                const target = e.target as HTMLImageElement;
+                                                target.style.display = 'none';
+                                              }}
+                                            />
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* 互动数据 */}
+                                  <div className="flex items-center gap-4 text-slate-400 pt-2 border-t border-slate-100">
+                                    <div className="flex items-center gap-1 hover:text-red-500 transition-colors">
+                                      <Share2 size={11} />
+                                      <span className="text-[9px] font-medium">
+                                        {comment.stats?.reposts > 0 ? (comment.stats.reposts > 1000 ? `${(comment.stats.reposts / 1000).toFixed(1)}k` : comment.stats.reposts) : ''}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-1 hover:text-blue-500 transition-colors">
+                                      <MessageSquare size={11} />
+                                      <span className="text-[9px] font-medium">
+                                        {comment.stats?.comments > 0 ? (comment.stats.comments > 1000 ? `${(comment.stats.comments / 1000).toFixed(1)}k` : comment.stats.comments) : ''}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-1 hover:text-red-500 transition-colors">
+                                      <Heart size={11} />
+                                      <span className="text-[9px] font-medium">
+                                        {comment.stats?.likes > 0 ? (comment.stats.likes > 1000 ? `${(comment.stats.likes / 1000).toFixed(1)}k` : comment.stats.likes) : ''}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
 
+                      {/* 垂直分隔线 */}
+                      <div className="absolute left-1/2 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-slate-300/60 to-transparent transform -translate-x-1/2 z-10"></div>
+                      
                       {/* 小红书热评 */}
-                      <div className="flex flex-col gap-3">
-                        <div className="flex items-center gap-2 mb-1">
+                      <div className="flex flex-col gap-3 pl-4 relative">
+                        <div className="flex items-center gap-2 mb-1 pb-2 border-b border-slate-200/40">
                           <div className="w-7 h-7 bg-[#FF2442] rounded-lg flex items-center justify-center text-white shadow-md">
                             <Zap size={14} />
                           </div>
@@ -849,7 +1278,7 @@ const HotDramaView: React.FC = () => {
                             <h4 className="text-xs font-black text-slate-800">小红书热评</h4>
                             <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Visuals</p>
                           </div>
-              </div>
+                        </div>
 
                         {xiaohongshuLoading ? (
                           <div className="flex items-center justify-center py-8">
@@ -1072,6 +1501,692 @@ const HotDramaView: React.FC = () => {
           <div className="flex-1 flex flex-col items-center justify-center">
             <Film size={64} className="text-slate-200 mb-4" />
             <p className="text-slate-400 font-bold text-sm">热门资源功能开发中...</p>
+          </div>
+        )}
+
+        {/* 网播热剧 Tab */}
+        {mainTab === 'webSeries' && (
+          <div className="flex-1 flex gap-4 overflow-hidden">
+            {/* 左侧：网播热剧排行列表 (1/4) */}
+            <div className="w-1/4 flex flex-col bg-white/40 backdrop-blur-md rounded-md border border-white/60 overflow-hidden">
+              <div className="px-3 py-2 border-b border-white/60 bg-gradient-to-r from-rose-50/80 to-pink-50/80">
+                <h3 className="text-xs font-black text-slate-800">网播热剧排行</h3>
+              </div>
+
+              <div className="flex-1 overflow-y-auto custom-scrollbar">
+                {webSeriesLoading ? (
+                  <div className="flex flex-col items-center justify-center py-24">
+                    <Loader2 className="animate-spin text-rose-600" size={24} />
+                    <p className="text-slate-400 font-bold text-xs mt-3">加载中...</p>
+                  </div>
+                ) : webSeriesList.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-24">
+                    <Tv size={32} className="text-slate-400" />
+                    <p className="text-slate-500 font-medium text-sm mt-3">暂无数据</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-white/40">
+                    {webSeriesList.map((series, index) => (
+                      <div
+                        key={series.seriesId}
+                        onClick={() => setSelectedWebSeries(series)}
+                        className={`px-3 py-2 cursor-pointer transition-all hover:bg-white/60 ${selectedWebSeries?.seriesId === series.seriesId
+                          ? 'bg-rose-50/80 border-l-4 border-rose-600'
+                          : ''
+                          }`}
+                      >
+                        {/* 第一行：排名 + 标题 */}
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                            <span className={`text-[10px] font-black flex-shrink-0 w-5 ${index === 0 ? 'text-red-500' :
+                              index === 1 ? 'text-orange-500' :
+                                index === 2 ? 'text-amber-500' :
+                                  'text-slate-400'
+                              }`}>
+                              {String(index + 1).padStart(2, '0')}
+                            </span>
+                            <h4 className="text-sm font-black text-slate-800 truncate flex-1">
+                              {series.title}
+                            </h4>
+                            {selectedWebSeries?.seriesId === series.seriesId && (
+                              <Star size={12} className="text-rose-600 fill-rose-600 flex-shrink-0" />
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 第二行：平台 + 上线信息 + 热度 */}
+                        <div className="flex items-center gap-2 mb-1">
+                          {series.platformDesc && (
+                            <div className="flex items-center gap-1 overflow-hidden">
+                              <Monitor size={10} className="text-blue-500 flex-shrink-0" />
+                              <span className="text-[10px] text-slate-500 truncate">{series.platformDesc}</span>
+                            </div>
+                          )}
+                          {series.releaseInfo && (
+                            <div className="flex items-center gap-1 whitespace-nowrap">
+                              <Calendar size={10} className="text-emerald-500 flex-shrink-0" />
+                              <span className="text-[10px] text-slate-400 font-normal">{series.releaseInfo}</span>
+                            </div>
+                          )}
+                          {series.currHeatDesc && (
+                            <div className="flex items-center gap-1 whitespace-nowrap ml-auto">
+                              <TrendingUp size={10} className="text-rose-500 flex-shrink-0" />
+                              <span className="text-[10px] text-rose-600 font-black">{series.currHeatDesc}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 第三行：类型 */}
+                        {series.category && (
+                          <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                            <span className="font-medium">{series.category}</span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 右侧：网播热剧详情 (3/4) */}
+            <div className="w-3/4 flex flex-col bg-white/40 backdrop-blur-md rounded-md border border-white/60 overflow-hidden relative">
+              {/* 背景装饰元素 */}
+              <div className="absolute top-0 right-0 w-64 h-64 bg-rose-500/5 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none"></div>
+              <div className="absolute bottom-0 left-0 w-48 h-48 bg-blue-500/5 rounded-full blur-3xl -ml-24 -mb-24 pointer-events-none"></div>
+
+              {webSeriesDetailLoading ? (
+                <div className="flex-1 flex flex-col items-center justify-center relative z-10">
+                  <Loader2 className="animate-spin text-rose-600" size={32} />
+                  <p className="text-slate-400 font-bold text-sm mt-4 uppercase tracking-widest">正在探索剧集奥秘...</p>
+                </div>
+              ) : webSeriesDetail ? (
+                <div ref={detailScrollRef} className="flex-1 flex flex-col overflow-y-auto custom-scrollbar relative z-10">
+                  {/* 剧集头部信息 - 与电影布局一致 */}
+                  <div className="px-4 py-3 border-b border-white/60 bg-gradient-to-br from-white/80 to-white/40">
+                    <div className="flex items-stretch gap-4">
+                      {/* 最左侧：剧集海报 */}
+                      <div className="relative group flex-shrink-0 flex flex-col">
+                        {webSeriesDetail.imgUrl ? (
+                          <div className="w-64 bg-slate-200 rounded-lg overflow-hidden border-2 border-white shadow-xl" style={{ aspectRatio: '2/3' }}>
+                            <img
+                              src={webSeriesDetail.imgUrl}
+                              alt={webSeriesDetail.name}
+                              className="w-full h-full object-cover rounded-lg transition-transform duration-500 group-hover:scale-[1.02]"
+                            />
+                          </div>
+                        ) : (
+                          <div className="w-64 h-full bg-slate-200 rounded-lg flex items-center justify-center text-slate-400 border-2 border-white shadow-xl" style={{ aspectRatio: '2/3' }}>
+                            <Tv size={32} />
+                          </div>
+                        )}
+                        <div className="absolute -bottom-3 -right-3 w-12 h-12 bg-rose-500 rounded-full flex items-center justify-center text-white shadow-lg border-4 border-white transform rotate-12 group-hover:rotate-0 transition-transform z-10">
+                          <Tv size={24} />
+                        </div>
+                      </div>
+
+                      {/* 右侧：标题、指标和趋势 */}
+                      <div className="flex-1 flex flex-col min-w-0 justify-between">
+                        <div className="flex flex-col">
+                          {/* 标题和基础信息 */}
+                          <div className="mb-2">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <div className="flex items-center gap-2">
+                                <h2 className="text-xl font-black text-slate-800 tracking-tight truncate">{webSeriesDetail.name}</h2>
+                                <div className="px-1.5 py-0.5 bg-rose-100 text-rose-600 text-[9px] font-black rounded uppercase tracking-wider flex-shrink-0">Hot</div>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium bg-white/50 px-1.5 py-0.5 rounded-md border border-white/60">
+                                <Zap size={10} className="text-amber-500" />
+                                <span>{webSeriesDetail.releaseInfo || webSeriesDetail.platformDesc || ''}</span>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-wrap gap-1.5">
+                              {webSeriesDetail.platformDesc && (
+                                <span className="px-1.5 py-0.5 text-[9px] font-bold rounded border bg-blue-50 text-blue-600 border-blue-200">
+                                  {webSeriesDetail.platformDesc}
+                                </span>
+                              )}
+                              {webSeriesDetail.category?.split(',').map((cat, i) => (
+                                <span key={i} className={`px-1.5 py-0.5 text-[9px] font-bold rounded border ${i % 3 === 0 ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                                  i % 3 === 1 ? 'bg-purple-50 text-purple-600 border-purple-200' :
+                                    'bg-emerald-50 text-emerald-600 border-emerald-200'
+                                  }`}>
+                                  {cat.trim()}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* 右侧上方：左右布局 - 指标和趋势 */}
+                          <div className="flex gap-2 mb-1.5">
+                          {/* 左边：4个指标 */}
+                          <div className="flex-1 bg-white/50 rounded-lg p-2 border border-white/60 shadow-sm">
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="flex flex-col">
+                                <div className="flex items-center gap-0.5 mb-0.5">
+                                  <TrendingUp size={9} className="text-rose-500" />
+                                  <div className="text-[8px] text-slate-400 font-bold uppercase">当前热度</div>
+                                </div>
+                                <div className="text-xs font-black text-rose-600">
+                                  {selectedWebSeries?.currHeatDesc || '0'}
+                                </div>
+                              </div>
+                              {webSeriesDetail.historyMaxHeat && (
+                                <div className="flex flex-col">
+                                  <div className="flex items-center gap-0.5 mb-0.5">
+                                    <Award size={9} className="text-emerald-500" />
+                                    <div className="text-[8px] text-slate-400 font-bold uppercase">历史最高</div>
+                                  </div>
+                                  <div className="text-xs font-black text-emerald-600">
+                                    {webSeriesDetail.historyMaxHeat.toFixed(2)}
+                                  </div>
+                                </div>
+                              )}
+                              {webSeriesDetail.commentCount && (
+                                <div className="flex flex-col">
+                                  <div className="flex items-center gap-0.5 mb-0.5">
+                                    <MessageSquare size={9} className="text-blue-500" />
+                                    <div className="text-[8px] text-slate-400 font-bold uppercase">评论数</div>
+                                  </div>
+                                  <div className="text-xs font-black text-slate-700">
+                                    {webSeriesDetail.commentCount}
+                                  </div>
+                                </div>
+                              )}
+                              {webSeriesDetail.sumCommentCount && (
+                                <div className="flex flex-col">
+                                  <div className="flex items-center gap-0.5 mb-0.5">
+                                    <Users size={9} className="text-amber-500" />
+                                    <div className="text-[8px] text-slate-400 font-bold uppercase">累计评论</div>
+                                  </div>
+                                  <div className="text-xs font-black text-slate-700">
+                                    {webSeriesDetail.sumCommentCount}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* 右边：趋势图 */}
+                          {webSeriesDetail.heatTrends && webSeriesDetail.heatTrends.length > 1 && (
+                            <div className="flex-1 h-24 bg-white/40 rounded-lg border border-white/60 px-2 py-1.5 flex flex-col relative overflow-hidden">
+                              <div className="flex items-center justify-between mb-1 relative z-10">
+                                <h3 className="text-[9px] font-black text-slate-700 flex items-center gap-1">
+                                  <TrendingUp size={10} className="text-rose-600" />
+                                  <span>近日趋势</span>
+                                </h3>
+                                <span className="text-[8px] text-slate-400 font-bold uppercase">7 Days</span>
+                              </div>
+
+                              <div className="flex-1 w-full min-h-0 relative">
+                                {(() => {
+                                  const trends = webSeriesDetail.heatTrends.slice(-7);
+                                  const maxHeat = Math.max(...trends.map(t => t.heat)) || 100;
+                                  const minHeat = Math.min(...trends.map(t => t.heat)) || 0;
+                                  const getX = (i: number) => (i / (trends.length - 1)) * 100;
+                                  const getY = (val: number) => 100 - ((val / maxHeat) * 70 + 15);
+
+                                  const points = trends.map((t, i) => `${getX(i)},${getY(t.heat)}`);
+                                  const areaPath = `M${points[0]} L${points.join(' L')} L100,120 L0,120 Z`;
+                                  const linePath = `M${points[0]} L${points.join(' L')}`;
+
+                                  return (
+                                    <div className="w-full h-full relative">
+                                      <svg className="w-full h-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                        <defs>
+                                          <linearGradient id="heatTrendGradient" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" stopColor="#e11d48" stopOpacity="0.2" />
+                                            <stop offset="100%" stopColor="#e11d48" stopOpacity="0" />
+                                          </linearGradient>
+                                        </defs>
+                                        <path d={areaPath} fill="url(#heatTrendGradient)" />
+                                        <path d={linePath} fill="none" stroke="#e11d48" strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
+                                      </svg>
+
+                                      {trends.map((t, i) => {
+                                        const date = new Date(t.date);
+                                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                                        const day = String(date.getDate()).padStart(2, '0');
+                                        return (
+                                          <div
+                                            key={i}
+                                            className="absolute group/point flex items-center justify-center w-4 h-4 -ml-2 -mt-2 cursor-pointer z-10"
+                                            style={{
+                                              left: `${getX(i)}%`,
+                                              top: `${getY(t.heat)}%`,
+                                            }}
+                                          >
+                                            <div className={`w-1.5 h-1.5 rounded-full border-[1.5px] transition-all duration-300 group-hover/point:scale-150 group-hover/point:bg-rose-600 group-hover/point:border-white ${i === trends.length - 1 ? 'bg-rose-600 border-white shadow-sm scale-125' : 'bg-white border-rose-600'
+                                              }`} />
+
+                                            <div className="absolute bottom-full mb-2 opacity-0 group-hover/point:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20">
+                                              <div className="bg-slate-800 text-white text-[9px] px-2 py-1 rounded shadow-lg font-bold flex flex-col items-center">
+                                                <span>{t.heat.toFixed(0)}</span>
+                                                <span className="text-[8px] text-slate-400 font-normal">{i === trends.length - 1 ? 'Today' : `${month}/${day}`}</span>
+                                              </div>
+                                              <div className="w-2 h-2 bg-slate-800 rotate-45 mx-auto -mt-1"></div>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                          )}
+                          </div>
+                        </div>
+
+                        {/* 右侧下方：B站影视解说 */}
+                        <div className="flex flex-col gap-2 mt-auto">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 bg-[#00AEEC] rounded flex items-center justify-center text-white shadow-sm">
+                              <Play size={12} fill="currentColor" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-black text-slate-800">B站影视解说</h4>
+                            </div>
+                            <span className="text-[8px] text-slate-400 font-bold uppercase tracking-widest ml-auto">Deep Analysis</span>
+                          </div>
+                          {webSeriesBilibiliLoading ? (
+                            <div className="flex items-center justify-center py-8">
+                              <Loader2 className="animate-spin text-[#00AEEC]" size={20} />
+                            </div>
+                          ) : webSeriesBilibiliComments.length === 0 ? (
+                            <div className="flex items-center justify-center py-8 text-slate-400 text-xs">
+                              暂无B站解说数据
+                            </div>
+                          ) : (
+                            <div className="relative">
+                              {/* 左箭头 */}
+                              {webSeriesBilibiliScrollIndex > 0 && (
+                                <button
+                                  onClick={() => {
+                                    const newIndex = Math.max(0, webSeriesBilibiliScrollIndex - 1);
+                                    setWebSeriesBilibiliScrollIndex(newIndex);
+                                    if (webSeriesBilibiliScrollRef.current) {
+                                      const container = webSeriesBilibiliScrollRef.current;
+                                      const scrollAmount = container.clientWidth;
+                                      container.scrollTo({
+                                        left: container.scrollLeft - scrollAmount,
+                                        behavior: 'smooth'
+                                      });
+                                    }
+                                  }}
+                                  className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-2 z-10 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg hover:bg-white transition-all border border-slate-200"
+                                >
+                                  <ChevronLeft size={16} className="text-slate-700" />
+                                </button>
+                              )}
+                              
+                              {/* 滚动容器 */}
+                              <div
+                                ref={webSeriesBilibiliScrollRef}
+                                className="flex gap-2 overflow-x-auto scrollbar-hide"
+                                style={{ 
+                                  scrollBehavior: 'smooth'
+                                }}
+                                onScroll={(e) => {
+                                  const container = e.currentTarget;
+                                  const scrollLeft = container.scrollLeft;
+                                  const scrollWidth = container.scrollWidth;
+                                  const clientWidth = container.clientWidth;
+                                  const maxScroll = scrollWidth - clientWidth;
+                                  const currentIndex = Math.round(scrollLeft / clientWidth);
+                                  setWebSeriesBilibiliScrollIndex(currentIndex);
+                                  setWebSeriesCanScrollRight(scrollLeft < maxScroll - 10);
+                                }}
+                              >
+                                {webSeriesBilibiliComments.map((item, i) => (
+                                  <div
+                                    key={item.id || i}
+                                    className="flex-shrink-0 w-56 bg-white rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow cursor-pointer group"
+                                    onClick={() => window.open(item.url, '_blank')}
+                                  >
+                                    <div className="relative">
+                                      {item.cover ? (
+                                        <img
+                                          src={getImageProxyUrl(item.cover)}
+                                          alt={item.title}
+                                          className="w-full h-32 object-cover group-hover:scale-105 transition-transform duration-300"
+                                        />
+                                      ) : (
+                                        <div className="w-full h-32 bg-gradient-to-br from-blue-50 to-cyan-50 flex items-center justify-center">
+                                          <Play size={24} className="text-blue-300" />
+                                        </div>
+                                      )}
+                                      {item.duration && (
+                                        <div className="absolute bottom-1 right-1 bg-black/70 text-white text-[8px] px-1 py-0.5 rounded font-medium">
+                                          {item.duration}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="p-2">
+                                      <h4 className="text-xs font-bold text-slate-800 line-clamp-2 mb-1 group-hover:text-rose-600 transition-colors">
+                                        {item.title}
+                                      </h4>
+                                      <div className="flex items-center gap-1.5 text-[9px] text-slate-400">
+                                        {item.author?.name && (
+                                          <>
+                                            <span className="truncate">{item.author.name}</span>
+                                            <span>•</span>
+                                          </>
+                                        )}
+                                        <span>{item.stats?.views >= 10000 ? `${(item.stats.views / 10000).toFixed(1)}万` : item.stats?.views || 0}播放</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* 右箭头 */}
+                              {webSeriesCanScrollRight && (
+                                <button
+                                  onClick={() => {
+                                    const newIndex = webSeriesBilibiliScrollIndex + 1;
+                                    setWebSeriesBilibiliScrollIndex(newIndex);
+                                    if (webSeriesBilibiliScrollRef.current) {
+                                      const container = webSeriesBilibiliScrollRef.current;
+                                      const scrollAmount = container.clientWidth;
+                                      container.scrollTo({
+                                        left: container.scrollLeft + scrollAmount,
+                                        behavior: 'smooth'
+                                      });
+                                    }
+                                  }}
+                                  className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-2 z-10 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg hover:bg-white transition-all border border-slate-200"
+                                >
+                                  <ChevronRight size={16} className="text-slate-700" />
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 社交热评 */}
+                  <div className="px-4 py-3 flex flex-col gap-3 bg-slate-50/50">
+                    {/* 微博 & 小红书 (并排) */}
+                    <div className="grid grid-cols-2 gap-0 relative">
+                      {/* 微博热评 */}
+                      <div className="flex flex-col gap-3 pr-4 relative">
+                        <div className="flex items-center gap-2 mb-1 pb-2 border-b border-slate-200/40">
+                          <div className="w-7 h-7 bg-[#E6162D] rounded-lg flex items-center justify-center text-white shadow-md">
+                            <Share2 size={14} />
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-black text-slate-800">微博热评</h4>
+                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Real-time</p>
+                          </div>
+                        </div>
+
+                        {webSeriesWeiboLoading ? (
+                          <div className="flex items-center justify-center py-8">
+                            <Loader2 className="animate-spin text-red-600" size={20} />
+                          </div>
+                        ) : webSeriesWeiboComments.length === 0 ? (
+                          <div className="text-center py-8 text-slate-400 text-xs">暂无微博数据</div>
+                        ) : (
+                          <div className="flex flex-col gap-3 h-full">
+                            {webSeriesWeiboComments.map((comment, index) => {
+                              const avatarUrl = comment.author?.avatar ? getImageProxyUrl(comment.author.avatar) : '';
+                              const formatTime = (timeStr?: string) => {
+                                if (!timeStr) return '刚刚';
+                                try {
+                                  const date = new Date(timeStr);
+                                  const now = new Date();
+                                  const diff = now.getTime() - date.getTime();
+                                  const minutes = Math.floor(diff / 60000);
+                                  const hours = Math.floor(minutes / 60);
+                                  const days = Math.floor(hours / 24);
+                                  if (days > 0) return `${days}天前`;
+                                  if (hours > 0) return `${hours}小时前`;
+                                  if (minutes > 0) return `${minutes}分钟前`;
+                                  return '刚刚';
+                                } catch {
+                                  return '刚刚';
+                                }
+                              };
+                              
+                              const renderText = (text: string) => {
+                                if (!text) return null;
+                                const parts: React.ReactNode[] = [];
+                                let lastIndex = 0;
+                                const regex = /(#([^#]+)#|@([^\s@]+))/g;
+                                let match;
+                                while ((match = regex.exec(text)) !== null) {
+                                  if (match.index > lastIndex) {
+                                    parts.push(text.substring(lastIndex, match.index));
+                                  }
+                                  if (match[0].startsWith('#')) {
+                                    parts.push(
+                                      <span key={match.index} className="text-[#ff6b9d] font-medium">
+                                        {match[0]}
+                                      </span>
+                                    );
+                                  } else {
+                                    parts.push(
+                                      <span key={match.index} className="text-[#1da1f2] font-medium">
+                                        {match[0]}
+                                      </span>
+                                    );
+                                  }
+                                  lastIndex = regex.lastIndex;
+                                }
+                                if (lastIndex < text.length) {
+                                  parts.push(text.substring(lastIndex));
+                                }
+                                return parts.length > 0 ? parts : text;
+                              };
+
+                              return (
+                                <div 
+                                  key={comment.id || index} 
+                                  className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-all cursor-pointer"
+                                  onClick={() => comment.url && window.open(comment.url, '_blank')}
+                                >
+                                  <div className="flex items-start gap-2 mb-2">
+                                    <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-200 flex-shrink-0">
+                                      {avatarUrl ? (
+                                        <img 
+                                          src={avatarUrl} 
+                                          alt={comment.author?.name || ''} 
+                                          className="w-full h-full object-cover"
+                                          onError={(e) => {
+                                            const target = e.target as HTMLImageElement;
+                                            target.style.display = 'none';
+                                          }}
+                                        />
+                                      ) : (
+                                        <div className="w-full h-full bg-gradient-to-br from-red-400 to-pink-500 flex items-center justify-center text-white text-xs font-bold">
+                                          {comment.author?.name?.charAt(0) || '?'}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <span className="text-[11px] font-bold text-slate-800 truncate">
+                                          {comment.author?.name || '微博用户'}
+                                        </span>
+                                        <span className="text-[9px] text-slate-400 flex-shrink-0">
+                                          {formatTime(comment.publishTime)}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="mb-2">
+                                    <p className="text-[11px] text-slate-700 leading-relaxed break-words">
+                                      {renderText(comment.text || '')}
+                                    </p>
+                                    
+                                    {comment.isRepost && comment.originalWeibo && (
+                                      <div className="mt-2 p-2 bg-slate-50 rounded-lg border border-slate-100">
+                                        <div className="text-[10px] text-slate-500 mb-1">
+                                          @{comment.originalWeibo.author || '原微博'}
+                                        </div>
+                                        <p className="text-[10px] text-slate-600 line-clamp-2">
+                                          {comment.originalWeibo.text || ''}
+                                        </p>
+                                      </div>
+                                    )}
+
+                                    {comment.images && comment.images.length > 0 && (
+                                      <div className="mt-2 grid grid-cols-4 gap-1 rounded-lg overflow-hidden">
+                                        {comment.images.slice(0, 9).map((img: string, imgIndex: number) => (
+                                          <div key={imgIndex} className="aspect-square bg-slate-100 rounded overflow-hidden">
+                                            <img 
+                                              src={getImageProxyUrl(img)} 
+                                              alt="" 
+                                              className="w-full h-full object-cover"
+                                              onError={(e) => {
+                                                const target = e.target as HTMLImageElement;
+                                                target.style.display = 'none';
+                                              }}
+                                            />
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center gap-4 text-slate-400 pt-2 border-t border-slate-100">
+                                    <div className="flex items-center gap-1 hover:text-red-500 transition-colors">
+                                      <Share2 size={11} />
+                                      <span className="text-[9px] font-medium">
+                                        {comment.stats?.reposts > 0 ? (comment.stats.reposts > 1000 ? `${(comment.stats.reposts / 1000).toFixed(1)}k` : comment.stats.reposts) : ''}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-1 hover:text-blue-500 transition-colors">
+                                      <MessageSquare size={11} />
+                                      <span className="text-[9px] font-medium">
+                                        {comment.stats?.comments > 0 ? (comment.stats.comments > 1000 ? `${(comment.stats.comments / 1000).toFixed(1)}k` : comment.stats.comments) : ''}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-1 hover:text-red-500 transition-colors">
+                                      <Heart size={11} />
+                                      <span className="text-[9px] font-medium">
+                                        {comment.stats?.likes > 0 ? (comment.stats.likes > 1000 ? `${(comment.stats.likes / 1000).toFixed(1)}k` : comment.stats.likes) : ''}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 垂直分隔线 */}
+                      <div className="absolute left-1/2 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-slate-300/60 to-transparent transform -translate-x-1/2 z-10"></div>
+                      
+                      {/* 小红书热评 */}
+                      <div className="flex flex-col gap-3 pl-4 relative">
+                        <div className="flex items-center gap-2 mb-1 pb-2 border-b border-slate-200/40">
+                          <div className="w-7 h-7 bg-[#FF2442] rounded-lg flex items-center justify-center text-white shadow-md">
+                            <Zap size={14} />
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-black text-slate-800">小红书热评</h4>
+                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Visuals</p>
+                          </div>
+                        </div>
+
+                        {webSeriesXiaohongshuLoading ? (
+                          <div className="flex items-center justify-center py-8">
+                            <Loader2 className="animate-spin text-rose-600" size={20} />
+                          </div>
+                        ) : webSeriesXiaohongshuComments.length === 0 ? (
+                          <div className="text-center py-8 text-slate-400 text-xs">暂无小红书数据</div>
+                        ) : (
+                          <div className="h-full">
+                            <Masonry
+                              breakpointCols={{
+                                default: 3,
+                                1200: 3,
+                                992: 3,
+                                768: 2,
+                                576: 2
+                              }}
+                              className="masonry-grid"
+                              columnClassName="masonry-grid_column"
+                            >
+                              {webSeriesXiaohongshuComments
+                                .filter(item => item.cover && item.cover.trim() !== '')
+                                .map((item, i) => {
+                                const coverUrl = item.cover || '';
+                                const imageUrl = getImageProxyUrl(coverUrl);
+                                
+                                return (
+                                  <div
+                                    key={item.id || `xhs-${i}`}
+                                    onClick={() => {
+                                      setSelectedXiaohongshuItem(item);
+                                      setShowXiaohongshuModal(true);
+                                    }}
+                                    className="group flex flex-col rounded-lg overflow-hidden bg-slate-200 border border-slate-100 shadow-sm hover:shadow-md transition-all mb-2 cursor-pointer"
+                                  >
+                                    <div className="relative w-full">
+                                      {imageUrl ? (
+                                        <img
+                                          src={imageUrl}
+                                          alt={item.title}
+                                          className="w-full h-auto object-cover group-hover:scale-105 transition-transform duration-300"
+                                          onError={(e) => {
+                                            const target = e.target as HTMLImageElement;
+                                            target.style.display = 'none';
+                                          }}
+                                        />
+                                      ) : (
+                                        <div className="w-full h-full bg-gradient-to-br from-pink-50 to-rose-50 flex items-center justify-center">
+                                          <Zap size={16} className="text-rose-300" />
+                                        </div>
+                                      )}
+                                      {item.type === 'video' && (
+                                        <div className="absolute top-0.5 right-0.5 w-3 h-3 bg-black/60 rounded flex items-center justify-center">
+                                          <Play size={8} className="text-white" fill="white" />
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="p-2 bg-white">
+                                      <p className="text-[11px] text-slate-700 font-medium line-clamp-2 mb-1">
+                                        {item.title}
+                                      </p>
+                                      <div className="flex items-center gap-2 text-[8px] text-slate-400">
+                                        {item.stats?.likes > 0 && (
+                                          <span>❤️ {item.stats.likes >= 1000 ? `${(item.stats.likes / 1000).toFixed(1)}k` : item.stats.likes}</span>
+                                        )}
+                                        {item.stats?.comments > 0 && (
+                                          <span>💬 {item.stats.comments >= 1000 ? `${(item.stats.comments / 1000).toFixed(1)}k` : item.stats.comments}</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </Masonry>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : selectedWebSeries ? (
+                <div className="flex-1 flex flex-col items-center justify-center relative z-10">
+                  <Tv size={64} className="text-slate-200 mb-4" />
+                  <p className="text-slate-400 font-bold text-sm">选择左侧剧集查看详情</p>
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center relative z-10">
+                  <Tv size={64} className="text-slate-200 mb-4" />
+                  <p className="text-slate-400 font-bold text-sm">暂无数据</p>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

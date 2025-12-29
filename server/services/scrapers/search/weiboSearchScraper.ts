@@ -1,6 +1,7 @@
 /**
  * 微博搜索爬虫 - 使用移动端API
  * 改用 m.weibo.cn 移动端API，返回JSON数据，更稳定
+ * 支持多种备用方案：Cookie模式、游客模式、备用API端点
  */
 
 /**
@@ -58,19 +59,96 @@ export interface WeiboSearchOptions {
     limit?: number;
 }
 
+// 缓存的游客Cookie（用于无登录状态下访问）
+let cachedVisitorCookie: string | null = null;
+let visitorCookieExpireTime: number = 0;
+
+// 上次请求时间（用于限速）
+let lastRequestTime: number = 0;
+const MIN_REQUEST_INTERVAL = 1000; // 最小请求间隔：1秒
+
+/**
+ * 延迟函数，控制请求速度
+ */
+function delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * 请求限速：确保两次请求之间至少间隔指定时间
+ */
+async function rateLimit(): Promise<void> {
+    const now = Date.now();
+    const elapsed = now - lastRequestTime;
+    if (elapsed < MIN_REQUEST_INTERVAL) {
+        const waitTime = MIN_REQUEST_INTERVAL - elapsed;
+        await delay(waitTime);
+    }
+    lastRequestTime = Date.now();
+}
+
 /**
  * 从环境变量获取微博cookie
  */
 function getWeiboCookieFromEnv(): string | null {
-    const cookie = process.env.WEIBO_COOKIE || 
-                   process.env.WEIBO_SEARCH_COOKIE || 
-                   null;
-    
+    const cookie = process.env.WEIBO_COOKIE ||
+        process.env.WEIBO_SEARCH_COOKIE ||
+        null;
+
     if (cookie) {
         console.log(`[WeiboSearch] 从环境变量读取到cookie，长度: ${cookie.length}`);
     }
-    
+
     return cookie;
+}
+
+/**
+ * 获取游客Cookie（用于未登录状态下的基础访问）
+ * 微博移动端会为未登录用户生成临时Cookie
+ */
+async function getVisitorCookie(): Promise<string | null> {
+    // 如果缓存的Cookie还有效（1小时内），直接返回
+    if (cachedVisitorCookie && Date.now() < visitorCookieExpireTime) {
+        console.log(`[WeiboSearch] 使用缓存的游客Cookie`);
+        return cachedVisitorCookie;
+    }
+
+    console.log(`[WeiboSearch] 尝试获取游客Cookie...`);
+
+    try {
+        // 访问微博移动端首页获取Cookie
+        const response = await fetch('https://m.weibo.cn/', {
+            method: 'GET',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'zh-CN,zh;q=0.9',
+            },
+        });
+
+        // 从响应头中提取Set-Cookie
+        const setCookieHeaders = response.headers.getSetCookie?.() || [];
+
+        if (setCookieHeaders.length > 0) {
+            // 解析并组合Cookie
+            const cookies = setCookieHeaders.map(cookie => {
+                return cookie.split(';')[0]; // 只取Cookie名=值部分
+            }).filter(Boolean);
+
+            if (cookies.length > 0) {
+                cachedVisitorCookie = cookies.join('; ');
+                visitorCookieExpireTime = Date.now() + 60 * 60 * 1000; // 1小时后过期
+                console.log(`[WeiboSearch] 获取到游客Cookie: ${cachedVisitorCookie.substring(0, 50)}...`);
+                return cachedVisitorCookie;
+            }
+        }
+
+        console.log(`[WeiboSearch] 未能从响应中获取Cookie`);
+        return null;
+    } catch (error: any) {
+        console.error(`[WeiboSearch] 获取游客Cookie失败: ${error.message}`);
+        return null;
+    }
 }
 
 /**
@@ -108,9 +186,9 @@ function parseWeiboCard(card: any): WeiboSearchResult | null {
     try {
         const mblog = card.mblog;
         if (!mblog) return null;
-        
+
         const user = mblog.user || {};
-        
+
         // 提取图片
         const images: string[] = [];
         if (mblog.pics && Array.isArray(mblog.pics)) {
@@ -119,26 +197,26 @@ function parseWeiboCard(card: any): WeiboSearchResult | null {
                 if (imgUrl) images.push(imgUrl);
             });
         }
-        
+
         // 提取视频
         let video: WeiboSearchResult['video'] = undefined;
         if (mblog.page_info?.type === 'video') {
             video = {
                 cover: mblog.page_info.page_pic?.url || '',
-                url: mblog.page_info.urls?.mp4_720p_mp4 || 
-                     mblog.page_info.urls?.mp4_hd_mp4 || 
-                     mblog.page_info.urls?.mp4_ld_mp4 || '',
+                url: mblog.page_info.urls?.mp4_720p_mp4 ||
+                    mblog.page_info.urls?.mp4_hd_mp4 ||
+                    mblog.page_info.urls?.mp4_ld_mp4 || '',
                 duration: mblog.page_info.play_count ? `${mblog.page_info.play_count}次播放` : ''
             };
         }
-        
+
         // 清理文本
         const text = cleanHtml(mblog.text || '');
-        
+
         // 提取话题和@提及
         const topics = text.match(/#[^#]+#/g) || [];
         const mentions = text.match(/@[^\s@]+/g) || [];
-        
+
         // 处理转发
         let isRepost = false;
         let originalWeibo: WeiboSearchResult['originalWeibo'] = undefined;
@@ -151,7 +229,7 @@ function parseWeiboCard(card: any): WeiboSearchResult | null {
                 author: orig.user?.screen_name || ''
             };
         }
-        
+
         return {
             id: mblog.id?.toString() || mblog.mid?.toString() || '',
             text,
@@ -190,15 +268,18 @@ export async function scrapeWeiboSearch(
     options: WeiboSearchOptions = {}
 ): Promise<WeiboSearchResponse> {
     const { page: pageNum = 1, limit = 20 } = options;
-    
+
     console.log(`[WeiboSearch] 开始搜索: ${keyword}, 页码: ${pageNum}`);
-    
+
     try {
+        // 请求限速
+        await rateLimit();
+        
         const cookieString = getWeiboCookieFromEnv();
         const apiUrl = buildMobileSearchUrl(keyword, pageNum);
-        
+
         console.log(`[WeiboSearch] 请求API: ${apiUrl}`);
-        
+
         // 构建请求头 - 模拟真实浏览器请求
         const headers: Record<string, string> = {
             'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
@@ -212,16 +293,16 @@ export async function scrapeWeiboSearch(
             'Sec-Fetch-Mode': 'cors',
             'Sec-Fetch-Site': 'same-origin',
         };
-        
+
         if (cookieString) {
             headers['Cookie'] = cookieString;
         }
-        
+
         const response = await fetch(apiUrl, {
             method: 'GET',
             headers,
         });
-        
+
         if (!response.ok) {
             const errorText = await response.text().catch(() => '无法读取错误信息');
             console.error(`[WeiboSearch] API请求失败: ${response.status} ${response.statusText}`);
@@ -233,7 +314,7 @@ export async function scrapeWeiboSearch(
                 hasMore: false
             };
         }
-        
+
         let json: any;
         let responseText: string;
         try {
@@ -258,14 +339,14 @@ export async function scrapeWeiboSearch(
                 hasMore: false
             };
         }
-        
+
         // 检查API返回状态
         if (json.ok !== 1) {
             const errorMsg = json.msg || json.message || json.error || 'unknown error';
             const errorCode = json.code || json.status || json.ok || 'N/A';
             console.error(`[WeiboSearch] API返回错误: ${errorMsg} (code: ${errorCode})`);
             console.error(`[WeiboSearch] 完整响应: ${JSON.stringify(json).substring(0, 500)}`);
-            
+
             // 检查是否是登录要求（ok: -100 通常表示需要登录）
             if (json.ok === -100 || json.url?.includes('passport.weibo.com') || errorCode === -100) {
                 console.warn(`[WeiboSearch] 需要登录认证，可能的原因：`);
@@ -276,7 +357,7 @@ export async function scrapeWeiboSearch(
             } else if (errorCode === 100000 || errorMsg.includes('登录') || errorMsg.includes('cookie')) {
                 console.warn(`[WeiboSearch] 可能是Cookie过期或无效，请检查环境变量 WEIBO_COOKIE`);
             }
-            
+
             return {
                 keyword,
                 page: pageNum,
@@ -284,17 +365,17 @@ export async function scrapeWeiboSearch(
                 hasMore: false
             };
         }
-        
+
         // 解析搜索结果
         const results: WeiboSearchResult[] = [];
         const cards = json.data?.cards || [];
-        
+
         // 如果没有cards，尝试其他数据结构
         if (!cards || cards.length === 0) {
             console.warn(`[WeiboSearch] 未找到cards数据，尝试其他数据结构`);
             console.warn(`[WeiboSearch] 响应数据结构: ${JSON.stringify(Object.keys(json)).substring(0, 200)}`);
         }
-        
+
         for (const card of cards) {
             // card_type 9 是普通微博，11 是卡片组
             if (card.card_type === 9) {
@@ -313,22 +394,22 @@ export async function scrapeWeiboSearch(
                     }
                 }
             }
-            
+
             if (results.length >= limit) break;
         }
-        
+
         // 判断是否还有更多
         const hasMore = cards.length > 0 && results.length >= limit;
-        
+
         console.log(`[WeiboSearch] 找到 ${results.length} 条结果`);
-        
+
         return {
             keyword,
             page: pageNum,
             results,
             hasMore
         };
-        
+
     } catch (error: any) {
         console.error(`[WeiboSearch] 搜索失败: ${error.message}`);
         return {

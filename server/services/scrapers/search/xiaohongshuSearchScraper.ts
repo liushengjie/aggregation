@@ -45,6 +45,30 @@ export interface XiaohongshuSearchOptions {
     limit?: number;
 }
 
+// 上次请求时间（用于限速）
+let lastRequestTime: number = 0;
+const MIN_REQUEST_INTERVAL = 200; // 最小请求间隔：2秒（小红书更严格）
+
+/**
+ * 延迟函数，控制请求速度
+ */
+function delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * 请求限速：确保两次请求之间至少间隔指定时间
+ */
+async function rateLimit(): Promise<void> {
+    const now = Date.now();
+    const elapsed = now - lastRequestTime;
+    if (elapsed < MIN_REQUEST_INTERVAL) {
+        const waitTime = MIN_REQUEST_INTERVAL - elapsed;
+        await delay(waitTime);
+    }
+    lastRequestTime = Date.now();
+}
+
 /**
  * 解析cookie字符串
  */
@@ -140,6 +164,9 @@ export async function scrapeXiaohongshuSearch(
     
     console.log(`[XiaohongshuSearch] 开始搜索: ${keyword}, 页码: ${pageNum}`);
     
+    // 请求限速
+    await rateLimit();
+    
     let browser: Browser | null = null;
     const results: XiaohongshuSearchResult[] = [];
     
@@ -193,15 +220,17 @@ export async function scrapeXiaohongshuSearch(
             console.warn(`[XiaohongshuSearch] 页面加载: ${e.message}`);
         }
         
+        // 增加等待时间，避免请求过快
         await page.waitForTimeout(3000);
         
         // 滚动触发加载
         if (results.length === 0) {
             for (let i = 0; i < 3; i++) {
                 await page.evaluate(() => window.scrollBy(0, 500));
-                await page.waitForTimeout(1000);
+                // 增加滚动间隔，降低请求频率
+                await page.waitForTimeout(2000);
             }
-            await page.waitForTimeout(2000);
+            await page.waitForTimeout(3000);
         }
         
         // DOM解析备用

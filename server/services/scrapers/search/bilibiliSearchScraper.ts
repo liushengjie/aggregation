@@ -55,6 +55,30 @@ export interface BilibiliSearchOptions {
     searchType?: 'video' | 'bangumi' | 'article' | 'live';
 }
 
+// 上次请求时间（用于限速）
+let lastRequestTime: number = 0;
+const MIN_REQUEST_INTERVAL = 200; // 最小请求间隔：1秒
+
+/**
+ * 延迟函数，控制请求速度
+ */
+function delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * 请求限速：确保两次请求之间至少间隔指定时间
+ */
+async function rateLimit(): Promise<void> {
+    const now = Date.now();
+    const elapsed = now - lastRequestTime;
+    if (elapsed < MIN_REQUEST_INTERVAL) {
+        const waitTime = MIN_REQUEST_INTERVAL - elapsed;
+        await delay(waitTime);
+    }
+    lastRequestTime = Date.now();
+}
+
 /**
  * 从环境变量获取B站cookie
  */
@@ -272,6 +296,9 @@ export async function scrapeBilibiliSearch(
     console.log(`[BilibiliSearch] 开始搜索: ${keyword}, 类型: ${searchType}, 页码: ${pageNum}`);
     
     try {
+        // 请求限速
+        await rateLimit();
+        
         const cookieString = getBilibiliCookieFromEnv();
         const apiUrl = buildSearchUrl(keyword, searchType, pageNum, limit);
         

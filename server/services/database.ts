@@ -275,6 +275,23 @@ function initSchema() {
     )
   `);
 
+  // Maoyan web series list table (网播热剧排行榜)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS maoyan_web_series_list (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      series_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      curr_heat REAL,
+      curr_heat_desc TEXT,
+      platform_desc TEXT,
+      release_info TEXT,
+      category TEXT,
+      img_url TEXT,
+      fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(series_id)
+    )
+  `);
+
   // Create indexes for maoyan tables
   db.exec(`CREATE INDEX IF NOT EXISTS idx_maoyan_calendar_fetched_at ON maoyan_calendar(fetched_at DESC)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_maoyan_rankings_category ON maoyan_rankings(category)`);
@@ -396,6 +413,26 @@ function initSchema() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_movie_search_relations_movie_id ON movie_search_relations(movie_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_movie_search_relations_platform ON movie_search_relations(platform)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_movie_search_relations_fetched_at ON movie_search_relations(fetched_at DESC)`);
+
+  // 网播热剧搜索关系表（存储网播热剧和搜索结果的关系）
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS series_search_relations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      series_id TEXT NOT NULL,
+      series_title TEXT NOT NULL,
+      platform TEXT NOT NULL CHECK(platform IN ('weibo', 'xiaohongshu', 'bilibili')),
+      search_keyword TEXT NOT NULL,
+      search_type TEXT,
+      total_results INTEGER DEFAULT 0,
+      fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(series_id, platform, search_keyword)
+    )
+  `);
+
+  // Create indexes for series_search_relations
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_series_search_relations_series_id ON series_search_relations(series_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_series_search_relations_platform ON series_search_relations(platform)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_series_search_relations_fetched_at ON series_search_relations(fetched_at DESC)`);
 }
 
 // Migration function to update platform_accounts table CHECK constraint
@@ -1258,7 +1295,34 @@ export const maoyanOps = {
       SELECT fetched_at FROM maoyan_calendar
       UNION ALL
       SELECT fetched_at FROM maoyan_rankings
+      UNION ALL
+      SELECT fetched_at FROM maoyan_web_series_list
     )
+  `),
+
+  // Web Series List operations
+  deleteAllWebSeriesList: db.prepare(`DELETE FROM maoyan_web_series_list`),
+  insertWebSeries: db.prepare(`
+    INSERT OR REPLACE INTO maoyan_web_series_list 
+    (series_id, title, curr_heat, curr_heat_desc, platform_desc, release_info, category, img_url, fetched_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `),
+  getLatestWebSeriesList: db.prepare(`
+    SELECT series_id as seriesId, title, curr_heat as currHeat, curr_heat_desc as currHeatDesc,
+           platform_desc as platformDesc, release_info as releaseInfo, category, img_url as imgUrl,
+           fetched_at as fetchedAt
+    FROM maoyan_web_series_list
+    ORDER BY curr_heat DESC, fetched_at DESC
+    LIMIT 100
+  `),
+  getWebSeriesById: db.prepare(`
+    SELECT series_id as seriesId, title, curr_heat as currHeat, curr_heat_desc as currHeatDesc,
+           platform_desc as platformDesc, release_info as releaseInfo, category, img_url as imgUrl,
+           fetched_at as fetchedAt
+    FROM maoyan_web_series_list
+    WHERE series_id = ?
+    ORDER BY fetched_at DESC
+    LIMIT 1
   `),
 };
 
@@ -1368,6 +1432,59 @@ export const searchOps = {
     INNER JOIN movie_search_relations msr ON xs.search_keyword = msr.search_keyword
     WHERE msr.movie_id = ? AND msr.platform = 'xiaohongshu'
     ORDER BY xs.stats_likes DESC, xs.fetched_at DESC
+    LIMIT ?
+  `),
+
+  // 根据电影ID获取微博搜索结果
+  getWeiboSearchByMovieId: db.prepare(`
+    SELECT ws.*
+    FROM weibo_search ws
+    INNER JOIN movie_search_relations msr ON ws.search_keyword = msr.search_keyword
+    WHERE msr.movie_id = ? AND msr.platform = 'weibo'
+    ORDER BY ws.stats_likes DESC, ws.stats_reposts DESC, ws.fetched_at DESC
+    LIMIT ?
+  `),
+
+  // 网播热剧搜索关系操作
+  insertSeriesSearchRelation: db.prepare(`
+    INSERT OR REPLACE INTO series_search_relations 
+    (series_id, series_title, platform, search_keyword, search_type, total_results, fetched_at)
+    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+  `),
+
+  // 检查网播热剧是否已有搜索结果
+  hasSeriesSearchResults: db.prepare(`
+    SELECT COUNT(*) as count FROM series_search_relations 
+    WHERE series_id = ? AND platform = ?
+  `),
+
+  // 根据网播热剧ID获取B站搜索结果
+  getBilibiliSearchBySeriesId: db.prepare(`
+    SELECT bs.*
+    FROM bilibili_search bs
+    INNER JOIN series_search_relations ssr ON bs.search_keyword = ssr.search_keyword
+    WHERE ssr.series_id = ? AND ssr.platform = 'bilibili'
+    ORDER BY bs.stats_views DESC, bs.fetched_at DESC
+    LIMIT ?
+  `),
+
+  // 根据网播热剧ID获取小红书搜索结果
+  getXiaohongshuSearchBySeriesId: db.prepare(`
+    SELECT xs.*
+    FROM xiaohongshu_search xs
+    INNER JOIN series_search_relations ssr ON xs.search_keyword = ssr.search_keyword
+    WHERE ssr.series_id = ? AND ssr.platform = 'xiaohongshu'
+    ORDER BY xs.stats_likes DESC, xs.fetched_at DESC
+    LIMIT ?
+  `),
+
+  // 根据网播热剧ID获取微博搜索结果
+  getWeiboSearchBySeriesId: db.prepare(`
+    SELECT ws.*
+    FROM weibo_search ws
+    INNER JOIN series_search_relations ssr ON ws.search_keyword = ssr.search_keyword
+    WHERE ssr.series_id = ? AND ssr.platform = 'weibo'
+    ORDER BY ws.stats_likes DESC, ws.stats_reposts DESC, ws.fetched_at DESC
     LIMIT ?
   `),
 };

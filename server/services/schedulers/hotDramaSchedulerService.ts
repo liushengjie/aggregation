@@ -217,7 +217,7 @@ let isMaoyanScraping = false;
 
 /**
  * Refresh Maoyan movie list data and save to database
- * 该方法现在委托给 hotDramaService 的 refreshAndSaveMaoyanData
+ * 并行执行电影和网播热剧的采集
  */
 export async function refreshMaoyanData(): Promise<{ success: boolean; data: { movies: MaoyanMovieItem[]; total: number } | null; error?: string }> {
     if (isMaoyanScraping) {
@@ -228,33 +228,54 @@ export async function refreshMaoyanData(): Promise<{ success: boolean; data: { m
     isMaoyanScraping = true;
 
     try {
-        console.log('[MaoyanScheduler] Starting Maoyan movie list refresh...');
+        console.log('[MaoyanScheduler] Starting Maoyan data refresh (movies + web series)...');
 
-        // 调用 hotDramaService 中的刷新和保存方法
-        const { refreshAndSaveMaoyanData } = await import('../hotDramaService.js');
-        const result = await refreshAndSaveMaoyanData();
+        // 并行执行电影和网播热剧的采集
+        const { refreshAndSaveMaoyanData, refreshAndSaveMaoyanWebSeriesData, searchAndSaveMovieDiscussions } = await import('../hotDramaService.js');
+        
+        const [movieResult, webSeriesResult] = await Promise.all([
+            refreshAndSaveMaoyanData(),
+            refreshAndSaveMaoyanWebSeriesData()
+        ]);
 
-        if (result.success) {
-            console.log(`[MaoyanScheduler] Successfully refreshed ${result.total} movies`);
+        if (movieResult.success) {
+            console.log(`[MaoyanScheduler] Successfully refreshed ${movieResult.total} movies`);
             
-            // 对每个电影进行搜索并入库
-            const { searchAndSaveMovieDiscussions } = await import('../hotDramaService.js');
-            await searchAndSaveMovieDiscussions(result.movies);
+            // 对每个电影进行搜索并入库（异步执行，不阻塞）
+            searchAndSaveMovieDiscussions(movieResult.movies).catch(err => {
+                console.error('[MaoyanScheduler] Error searching movie discussions:', err);
+            });
+        } else {
+            console.log('[MaoyanScheduler] Movie refresh failed:', movieResult.error);
+        }
+
+        if (webSeriesResult.success) {
+            console.log(`[MaoyanScheduler] Successfully refreshed ${webSeriesResult.total} web series`);
             
+            // 对每个网播热剧进行搜索并入库（异步执行，不阻塞）
+            const { searchAndSaveWebSeriesDiscussions } = await import('../hotDramaService.js');
+            searchAndSaveWebSeriesDiscussions(webSeriesResult.series).catch(err => {
+                console.error('[MaoyanScheduler] Error searching web series discussions:', err);
+            });
+        } else {
+            console.log('[MaoyanScheduler] Web series refresh failed:', webSeriesResult.error);
+        }
+        
+        // 返回电影数据（保持向后兼容）
+        if (movieResult.success) {
             return {
                 success: true,
-                data: { movies: result.movies, total: result.total }
+                data: { movies: movieResult.movies, total: movieResult.total }
             };
         } else {
-            console.log('[MaoyanScheduler] Refresh failed:', result.error);
             return {
                 success: false,
                 data: null,
-                error: result.error
+                error: movieResult.error
             };
         }
     } catch (error: any) {
-        console.error('[MaoyanScheduler] Error refreshing Maoyan movie list:', error.message);
+        console.error('[MaoyanScheduler] Error refreshing Maoyan data:', error.message);
         return { success: false, data: null, error: error.message };
     } finally {
         isMaoyanScraping = false;
