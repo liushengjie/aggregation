@@ -1,13 +1,24 @@
 /**
  * 小红书搜索爬虫
  * 使用Playwright浏览器模拟，监听API响应获取数据
+ * 
+ * 改进措施：
+ * - 自适应频率控制
+ * - User-Agent 轮换
+ * - 重试机制
+ * - 真实请求头
  */
 
 import { chromium, Browser, Cookie } from 'playwright';
+import { 
+    getRandomUserAgent, 
+    AdaptiveRateLimiter, 
+    retryWithBackoff 
+} from '../utils/scraperUtils.js';
 
-/**
- * 小红书搜索结果接口
- */
+// 创建自适应频率控制器（基础间隔5秒）
+const rateLimiter = new AdaptiveRateLimiter(5000, 30000, 2000);
+
 export interface XiaohongshuSearchResult {
     id: string;
     title: string;
@@ -27,9 +38,6 @@ export interface XiaohongshuSearchResult {
     url: string;
 }
 
-/**
- * 小红书搜索响应接口
- */
 export interface XiaohongshuSearchResponse {
     keyword: string;
     page: number;
@@ -37,41 +45,11 @@ export interface XiaohongshuSearchResponse {
     hasMore: boolean;
 }
 
-/**
- * 搜索选项
- */
 export interface XiaohongshuSearchOptions {
     page?: number;
     limit?: number;
 }
 
-// 上次请求时间（用于限速）
-let lastRequestTime: number = 0;
-const MIN_REQUEST_INTERVAL = 200; // 最小请求间隔：2秒（小红书更严格）
-
-/**
- * 延迟函数，控制请求速度
- */
-function delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-/**
- * 请求限速：确保两次请求之间至少间隔指定时间
- */
-async function rateLimit(): Promise<void> {
-    const now = Date.now();
-    const elapsed = now - lastRequestTime;
-    if (elapsed < MIN_REQUEST_INTERVAL) {
-        const waitTime = MIN_REQUEST_INTERVAL - elapsed;
-        await delay(waitTime);
-    }
-    lastRequestTime = Date.now();
-}
-
-/**
- * 解析cookie字符串
- */
 function parseCookies(cookieString: string, domain: string = 'xiaohongshu.com'): Cookie[] {
     if (!cookieString?.trim()) return [];
     
@@ -97,17 +75,10 @@ function parseCookies(cookieString: string, domain: string = 'xiaohongshu.com'):
     return cookies;
 }
 
-/**
- * 从环境变量获取cookie
- */
 function getCookieFromEnv(): string | null {
     return process.env.XIAOHONGSHU_COOKIE || process.env.XHS_COOKIE || null;
 }
 
-
-/**
- * 解析API返回的笔记数据
- */
 function parseNoteItem(item: any): XiaohongshuSearchResult | null {
     try {
         const noteCard = item.note_card || item;
@@ -116,7 +87,6 @@ function parseNoteItem(item: any): XiaohongshuSearchResult | null {
         const user = noteCard.user || {};
         const id = item.id || noteCard.note_id || '';
         
-        // 封面图：优先 url_default，其次 url_pre
         let cover = '';
         if (noteCard.cover) {
             cover = noteCard.cover.url_default || 
@@ -124,7 +94,6 @@ function parseNoteItem(item: any): XiaohongshuSearchResult | null {
                     noteCard.cover.url || 
                     '';
         }
-        // 备用：从图片列表获取
         if (!cover && noteCard.image_list?.length > 0) {
             const img = noteCard.image_list[0];
             cover = img.url_default || img.url_pre || img.url || '';
@@ -153,9 +122,6 @@ function parseNoteItem(item: any): XiaohongshuSearchResult | null {
     }
 }
 
-/**
- * 小红书搜索主函数
- */
 export async function scrapeXiaohongshuSearch(
     keyword: string,
     options: XiaohongshuSearchOptions = {}
@@ -164,25 +130,32 @@ export async function scrapeXiaohongshuSearch(
     
     console.log(`[XiaohongshuSearch] 开始搜索: ${keyword}, 页码: ${pageNum}`);
     
-    // 请求限速
-    await rateLimit();
+    // 频率控制
+    await rateLimiter.wait();
+    console.log(`[XiaohongshuSearch] 当前频率控制: ${JSON.stringify(rateLimiter.getStats())}`);
     
     let browser: Browser | null = null;
     const results: XiaohongshuSearchResult[] = [];
     
     try {
-        browser = await chromium.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
-        });
+        browser = await retryWithBackoff(async () => {
+            return await chromium.launch({
+                headless: true,
+                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
+            });
+        }, { maxRetries: 2, baseDelay: 1000 });
         
         const cookieString = getCookieFromEnv();
         const cookies = cookieString ? parseCookies(cookieString) : [];
         
         const context = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            userAgent: getRandomUserAgent(),
             viewport: { width: 1920, height: 1080 },
-            locale: 'zh-CN'
+            locale: 'zh-CN',
+            extraHTTPHeaders: {
+                'Accept-Language': 'zh-CN,zh;q=0.9',
+                'DNT': '1',
+            }
         });
         
         if (cookies.length > 0) {
@@ -192,7 +165,6 @@ export async function scrapeXiaohongshuSearch(
         
         const page = await context.newPage();
         
-        // 监听API响应
         page.on('response', async (response) => {
             const url = response.url();
             if (url.includes('/api/sns/web/v1/search/notes') || url.includes('/api/sns/web/v2/search/notes')) {
@@ -210,30 +182,23 @@ export async function scrapeXiaohongshuSearch(
             }
         });
         
-        // 访问搜索页面
         const searchUrl = `https://www.xiaohongshu.com/search_result?keyword=${encodeURIComponent(keyword)}&source=web_search_result_notes`;
         console.log(`[XiaohongshuSearch] 访问: ${searchUrl}`);
         
-        try {
+        await retryWithBackoff(async () => {
             await page.goto(searchUrl, { waitUntil: 'networkidle', timeout: 30000 });
-        } catch (e: any) {
-            console.warn(`[XiaohongshuSearch] 页面加载: ${e.message}`);
-        }
+        }, { maxRetries: 2, baseDelay: 2000 });
         
-        // 增加等待时间，避免请求过快
         await page.waitForTimeout(3000);
         
-        // 滚动触发加载
         if (results.length === 0) {
             for (let i = 0; i < 3; i++) {
                 await page.evaluate(() => window.scrollBy(0, 500));
-                // 增加滚动间隔，降低请求频率
-                await page.waitForTimeout(2000);
+                await page.waitForTimeout(1000);
             }
-            await page.waitForTimeout(3000);
+            await page.waitForTimeout(2000);
         }
         
-        // DOM解析备用
         if (results.length === 0) {
             console.log('[XiaohongshuSearch] 尝试DOM解析...');
             const domResults = await page.evaluate((maxLimit: number) => {
@@ -274,10 +239,13 @@ export async function scrapeXiaohongshuSearch(
         await context.close();
         console.log(`[XiaohongshuSearch] 最终找到 ${results.length} 条结果`);
         
+        rateLimiter.onSuccess();
+        
         return { keyword, page: pageNum, results, hasMore: results.length >= limit };
         
     } catch (error: any) {
         console.error(`[XiaohongshuSearch] 搜索失败: ${error.message}`);
+        rateLimiter.onFailure(error.statusCode);
         return { keyword, page: pageNum, results: [], hasMore: false };
     } finally {
         if (browser) await browser.close();

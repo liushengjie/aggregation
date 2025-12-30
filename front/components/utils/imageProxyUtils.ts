@@ -2,7 +2,7 @@ import { getApiBase } from '../../api/api';
 
 /**
  * 获取图片代理URL
- * 对小红书和B站的图片使用代理，其他直接返回原URL
+ * 对微博、小红书和B站的图片使用代理，其他直接返回原URL
  */
 export const getImageProxyUrl = (url: string): string => {
   if (!url) return '';
@@ -10,6 +10,16 @@ export const getImageProxyUrl = (url: string): string => {
   let fullUrl = url;
   if (!url.startsWith('http://') && !url.startsWith('https://')) {
     fullUrl = 'https://' + url;
+  }
+  
+  // 微博图片代理
+  if (
+    fullUrl.includes('sinaimg.cn') ||
+    fullUrl.includes('sina.cn')
+  ) {
+    const proxyUrl = `${getApiBase()}/image/proxy?url=${encodeURIComponent(fullUrl)}`;
+    console.log('[ImageProxy] 微博图片代理:', fullUrl, '->', proxyUrl);
+    return proxyUrl;
   }
   
   // 小红书图片代理

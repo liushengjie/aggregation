@@ -1,7 +1,22 @@
 /**
  * B站搜索爬虫 - 使用API方式
- * 参考微博搜索爬虫的实现方式
+ * 
+ * 改进措施：
+ * - 自适应频率控制
+ * - User-Agent 轮换
+ * - 重试机制
+ * - 真实请求头
  */
+
+import { 
+    getRandomUserAgent, 
+    getRealisticHeaders, 
+    AdaptiveRateLimiter, 
+    retryWithBackoff 
+} from '../utils/scraperUtils.js';
+
+// 创建自适应频率控制器（基础间隔2秒，B站相对宽松）
+const rateLimiter = new AdaptiveRateLimiter(2000, 20000, 1000);
 
 /**
  * B站搜索结果接口
@@ -296,47 +311,49 @@ export async function scrapeBilibiliSearch(
     console.log(`[BilibiliSearch] 开始搜索: ${keyword}, 类型: ${searchType}, 页码: ${pageNum}`);
     
     try {
-        // 请求限速
-        await rateLimit();
+        // 频率控制
+        await rateLimiter.wait();
+        console.log(`[BilibiliSearch] 当前频率控制: ${JSON.stringify(rateLimiter.getStats())}`);
         
         const cookieString = getBilibiliCookieFromEnv();
         const apiUrl = buildSearchUrl(keyword, searchType, pageNum, limit);
         
         console.log(`[BilibiliSearch] 请求API: ${apiUrl}`);
         
-        // 构建请求头
-        const headers: Record<string, string> = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*',
-            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-            'Referer': 'https://www.bilibili.com/',
-            'Origin': 'https://www.bilibili.com'
-        };
-        
-        if (cookieString) {
-            headers['Cookie'] = cookieString;
-        }
-        
-        const response = await fetch(apiUrl, {
-            method: 'GET',
-            headers,
-        });
-        
-        if (!response.ok) {
-            console.error(`[BilibiliSearch] API请求失败: ${response.status} ${response.statusText}`);
-            return {
-                keyword,
-                page: pageNum,
-                results: [],
-                hasMore: false
+        // 使用重试机制执行请求
+        const json = await retryWithBackoff(async () => {
+            // 构建请求头（使用随机UA和真实请求头）
+            const headers: Record<string, string> = {
+                ...getRealisticHeaders('bilibili'),
+                'Accept': 'application/json, text/plain, */*',
             };
-        }
-        
-        const json = await response.json();
+            
+            if (cookieString) {
+                headers['Cookie'] = cookieString;
+            }
+            
+            const response = await fetch(apiUrl, {
+                method: 'GET',
+                headers,
+            });
+            
+            if (!response.ok) {
+                const error: any = new Error(`API请求失败: ${response.status} ${response.statusText}`);
+                error.statusCode = response.status;
+                throw error;
+            }
+            
+            return await response.json();
+        }, {
+            maxRetries: 3,
+            baseDelay: 1000,
+            maxDelay: 10000,
+        });
         
         // 检查API返回状态
         if (json.code !== 0) {
             console.error(`[BilibiliSearch] API返回错误: ${json.message || json.msg || 'unknown error'}, code: ${json.code}`);
+            rateLimiter.onFailure();
             return {
                 keyword,
                 page: pageNum,
@@ -383,6 +400,8 @@ export async function scrapeBilibiliSearch(
         
         console.log(`[BilibiliSearch] 找到 ${results.length} 条结果，总计: ${total}`);
         
+        // 记录成功
+        rateLimiter.onSuccess();
         return {
             keyword,
             total,
@@ -393,6 +412,10 @@ export async function scrapeBilibiliSearch(
         
     } catch (error: any) {
         console.error(`[BilibiliSearch] 搜索失败: ${error.message}`);
+        
+        // 记录失败
+        rateLimiter.onFailure(error.statusCode);
+        
         return {
             keyword,
             page: pageNum,

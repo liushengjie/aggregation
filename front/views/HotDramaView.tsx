@@ -844,125 +844,125 @@ const HotDramaView: React.FC = () => {
                     xiaohongshuComments={xiaohongshuComments}
                     xiaohongshuLoading={xiaohongshuLoading}
                     onXiaohongshuClick={(item) => {
-                      setSelectedXiaohongshuItem(item);
-                      setShowXiaohongshuModal(true);
-                    }}
+                                      setSelectedXiaohongshuItem(item);
+                                      setShowXiaohongshuModal(true);
+                                    }}
                   />
-                  
-                  {/* 小红书弹窗 */}
-                  {showXiaohongshuModal && selectedXiaohongshuItem && (
-                    <div 
-                      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-                      onClick={() => setShowXiaohongshuModal(false)}
-                    >
-                      <div 
-                        className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {/* 关闭按钮 */}
-                        <div className="flex items-center justify-between p-4 border-b border-slate-200">
-                          <h3 className="text-lg font-bold text-slate-800">小红书详情</h3>
-                          <button
-                            onClick={() => setShowXiaohongshuModal(false)}
-                            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                          >
-                            <X size={20} className="text-slate-600" />
-                          </button>
-                        </div>
                         
-                        {/* 内容区域 */}
-                        <div className="flex-1 overflow-y-auto p-6">
-                          {/* 图片 */}
-                          {selectedXiaohongshuItem.cover && (
-                            <div className="mb-4 rounded-lg overflow-hidden">
-                              <img
-                                src={getImageProxyUrl(selectedXiaohongshuItem.cover)}
-                                alt={selectedXiaohongshuItem.title}
-                                className="w-full h-auto object-contain max-h-[400px] mx-auto"
-                                onError={(e) => {
-                                  const target = e.target as HTMLImageElement;
-                                  target.style.display = 'none';
-                                }}
-                              />
-                            </div>
-                          )}
-                          
-                          {/* 标题 */}
-                          {selectedXiaohongshuItem.title && (
-                            <h2 className="text-xl font-bold text-slate-800 mb-4">
-                              {selectedXiaohongshuItem.title}
-                            </h2>
-                          )}
-                          
-                          {/* 描述 */}
-                          {selectedXiaohongshuItem.desc && (
-                            <p className="text-slate-600 mb-4 whitespace-pre-wrap">
-                              {selectedXiaohongshuItem.desc}
-                            </p>
-                          )}
-                          
-                          {/* 作者信息 */}
-                          {selectedXiaohongshuItem.author && (
-                            <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg mb-4">
-                              {selectedXiaohongshuItem.author.avatar && (
-                                <img
-                                  src={getImageProxyUrl(selectedXiaohongshuItem.author.avatar)}
-                                  alt={selectedXiaohongshuItem.author.name}
-                                  className="w-12 h-12 rounded-full object-cover"
-                                  onError={(e) => {
-                                    const target = e.target as HTMLImageElement;
-                                    target.src = '';
-                                  }}
-                                />
-                              )}
-                              <div className="flex-1">
-                                <p className="font-semibold text-slate-800">
-                                  {selectedXiaohongshuItem.author.name || '未知用户'}
-                                </p>
+                        {/* 小红书弹窗 */}
+                        {showXiaohongshuModal && selectedXiaohongshuItem && (
+                          <div 
+                            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                            onClick={() => setShowXiaohongshuModal(false)}
+                          >
+                            <div 
+                              className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {/* 关闭按钮 */}
+                              <div className="flex items-center justify-between p-4 border-b border-slate-200">
+                                <h3 className="text-lg font-bold text-slate-800">小红书详情</h3>
+                                <button
+                                  onClick={() => setShowXiaohongshuModal(false)}
+                                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                                >
+                                  <X size={20} className="text-slate-600" />
+                                </button>
+                              </div>
+                              
+                              {/* 内容区域 */}
+                              <div className="flex-1 overflow-y-auto p-6">
+                                {/* 图片 */}
+                                {selectedXiaohongshuItem.cover && (
+                                  <div className="mb-4 rounded-lg overflow-hidden">
+                                    <img
+                                      src={getImageProxyUrl(selectedXiaohongshuItem.cover)}
+                                      alt={selectedXiaohongshuItem.title}
+                                      className="w-full h-auto object-contain max-h-[400px] mx-auto"
+                                      onError={(e) => {
+                                        const target = e.target as HTMLImageElement;
+                                        target.style.display = 'none';
+                                      }}
+                                    />
+                                  </div>
+                                )}
+                                
+                                {/* 标题 */}
+                                {selectedXiaohongshuItem.title && (
+                                  <h2 className="text-xl font-bold text-slate-800 mb-4">
+                                    {selectedXiaohongshuItem.title}
+                                  </h2>
+                                )}
+                                
+                                {/* 描述 */}
+                                {selectedXiaohongshuItem.desc && (
+                                  <p className="text-slate-600 mb-4 whitespace-pre-wrap">
+                                    {selectedXiaohongshuItem.desc}
+                                  </p>
+                                )}
+                                
+                                {/* 作者信息 */}
+                                {selectedXiaohongshuItem.author && (
+                                  <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg mb-4">
+                                    {selectedXiaohongshuItem.author.avatar && (
+                                      <img
+                                        src={getImageProxyUrl(selectedXiaohongshuItem.author.avatar)}
+                                        alt={selectedXiaohongshuItem.author.name}
+                                        className="w-12 h-12 rounded-full object-cover"
+                                        onError={(e) => {
+                                          const target = e.target as HTMLImageElement;
+                                          target.src = '';
+                                        }}
+                                      />
+                                    )}
+                                    <div className="flex-1">
+                                      <p className="font-semibold text-slate-800">
+                                        {selectedXiaohongshuItem.author.name || '未知用户'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                )}
+                                
+                                {/* 统计数据 */}
+                                {selectedXiaohongshuItem.stats && (
+                                  <div className="flex items-center gap-4 text-slate-600 mb-4">
+                                    {selectedXiaohongshuItem.stats.likes > 0 && (
+                                      <div className="flex items-center gap-1">
+                                        <Heart size={16} className="text-red-500" fill="currentColor" />
+                                        <span>{selectedXiaohongshuItem.stats.likes >= 1000 ? `${(selectedXiaohongshuItem.stats.likes / 1000).toFixed(1)}k` : selectedXiaohongshuItem.stats.likes}</span>
+                                      </div>
+                                    )}
+                                    {selectedXiaohongshuItem.stats.comments > 0 && (
+                                      <div className="flex items-center gap-1">
+                                        <MessageSquare size={16} className="text-blue-500" />
+                                        <span>{selectedXiaohongshuItem.stats.comments >= 1000 ? `${(selectedXiaohongshuItem.stats.comments / 1000).toFixed(1)}k` : selectedXiaohongshuItem.stats.comments}</span>
+                                      </div>
+                                    )}
+                                    {selectedXiaohongshuItem.stats.collects > 0 && (
+                                      <div className="flex items-center gap-1">
+                                        <Star size={16} className="text-yellow-500" fill="currentColor" />
+                                        <span>{selectedXiaohongshuItem.stats.collects >= 1000 ? `${(selectedXiaohongshuItem.stats.collects / 1000).toFixed(1)}k` : selectedXiaohongshuItem.stats.collects}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              
+                              {/* 底部按钮 */}
+                              <div className="p-4 border-t border-slate-200 flex justify-end">
+                                <a
+                                  href={selectedXiaohongshuItem.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-2 px-6 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors font-medium"
+                                >
+                                  <span>前往小红书</span>
+                                  <ExternalLink size={16} />
+                                </a>
                               </div>
                             </div>
-                          )}
-                          
-                          {/* 统计数据 */}
-                          {selectedXiaohongshuItem.stats && (
-                            <div className="flex items-center gap-4 text-slate-600 mb-4">
-                              {selectedXiaohongshuItem.stats.likes > 0 && (
-                                <div className="flex items-center gap-1">
-                                  <Heart size={16} className="text-red-500" fill="currentColor" />
-                                  <span>{selectedXiaohongshuItem.stats.likes >= 1000 ? `${(selectedXiaohongshuItem.stats.likes / 1000).toFixed(1)}k` : selectedXiaohongshuItem.stats.likes}</span>
-                                </div>
-                              )}
-                              {selectedXiaohongshuItem.stats.comments > 0 && (
-                                <div className="flex items-center gap-1">
-                                  <MessageSquare size={16} className="text-blue-500" />
-                                  <span>{selectedXiaohongshuItem.stats.comments >= 1000 ? `${(selectedXiaohongshuItem.stats.comments / 1000).toFixed(1)}k` : selectedXiaohongshuItem.stats.comments}</span>
-                                </div>
-                              )}
-                              {selectedXiaohongshuItem.stats.collects > 0 && (
-                                <div className="flex items-center gap-1">
-                                  <Star size={16} className="text-yellow-500" fill="currentColor" />
-                                  <span>{selectedXiaohongshuItem.stats.collects >= 1000 ? `${(selectedXiaohongshuItem.stats.collects / 1000).toFixed(1)}k` : selectedXiaohongshuItem.stats.collects}</span>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                        
-                        {/* 底部按钮 */}
-                        <div className="p-4 border-t border-slate-200 flex justify-end">
-                          <a
-                            href={selectedXiaohongshuItem.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-2 px-6 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors font-medium"
-                          >
-                            <span>前往小红书</span>
-                            <ExternalLink size={16} />
-                          </a>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                          </div>
+                        )}
                 </div>
               ) : selectedMovie ? (
                 <div className="flex-1 flex flex-col items-center justify-center relative z-10">

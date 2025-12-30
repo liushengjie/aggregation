@@ -342,7 +342,7 @@ let lastBilibiliRequestTime: number = 0;
 
 // 各平台的最小请求间隔（毫秒）
 const WEIBO_REQUEST_INTERVAL =5000; // 微博：5秒（降低验证码风险）
-const XIAOHONGSHU_REQUEST_INTERVAL = 2000; // 小红书：2秒
+const XIAOHONGSHU_REQUEST_INTERVAL = 5000; // 小红书：2秒
 const BILIBILI_REQUEST_INTERVAL = 2000; // B站：2秒
 
 /**
